@@ -117,6 +117,8 @@ vector<int> tile_transpose(const vector<int>& mat, int rows, int cols, int tile_
 // GPU tile transpose (to be)
 __global__ void gpu_tile_transpose(int *d_matrix_1, int *d_matrix_res, int rows, int cols, int tile_D1, int tile_D2) {
 
+    extern __shared__ int tile[];
+
     unsigned int i = blockIdx.x*blockDim.x + threadIdx.x;
     unsigned int j = blockIdx.y*blockDim.y + threadIdx.y;
 
@@ -124,8 +126,12 @@ __global__ void gpu_tile_transpose(int *d_matrix_1, int *d_matrix_res, int rows,
         return;
     if (j >= cols)
         return;
-    
-    d_matrix_res[j*rows + i] = d_matrix_1[i*cols + j];
+
+    tile[threadIdx.x*tile_D2 + threadIdx.y] = d_matrix_1[i*cols + j];
+    __syncthreads();
+
+    // d_matrix_res[j*rows + i] = d_matrix_1[i*cols + j];
+    d_matrix_res[j*rows + i] = tile[threadIdx.x*tile_D2 + threadIdx.y];
 }
 
 
@@ -178,8 +184,11 @@ int main(int argc, char *argv[]) {
         unsigned int no_of_blocks_x = ceil((1.0*no_of_rows_of_matrix_1) / tile_m);
         unsigned int no_of_blocks_y = ceil((1.0*no_of_cols_of_matrix_1) / tile_n);
 
+        unsigned int shared_memory_size = tile_m * tile_n * sizeof(int);
+
         cout << "no of blocks_x: " << no_of_blocks_x << endl;
         cout << "no of blocks_y: " << no_of_blocks_y << endl;
+        cout << "shared mem size: " << shared_memory_size << endl;
 
         // block & grid creation
         dim3 block(tile_m, tile_n);
@@ -188,7 +197,7 @@ int main(int argc, char *argv[]) {
         //timing
         auto start = chrono::high_resolution_clock::now();
 
-        gpu_tile_transpose<<<grid, block>>>(d_matrix_1, d_matrix_res, no_of_rows_of_matrix_1, no_of_cols_of_matrix_1, tile_m, tile_n);
+        gpu_tile_transpose<<<grid, block, shared_memory_size>>>(d_matrix_1, d_matrix_res, no_of_rows_of_matrix_1, no_of_cols_of_matrix_1, tile_m, tile_n);
         cudaDeviceSynchronize();
 
         auto end = chrono::high_resolution_clock::now();
