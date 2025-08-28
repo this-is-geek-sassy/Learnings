@@ -89,8 +89,8 @@ void write_matrix_to_csv(const string& filename, const vector<int>& mat, int row
 }
 
 // CPU tile transpose
-std::vector<int> tile_transpose(const std::vector<int>& mat, int rows, int cols, int tile_D1, int tile_D2) {
-    std::vector<int> transposed(cols * rows);
+vector<int> tile_transpose(const vector<int>& mat, int rows, int cols, int tile_D1, int tile_D2) {
+    vector<int> transposed(cols * rows);
 
     for (int ii = 0; ii < rows; ii += tile_D1) {
         for (int jj = 0; jj < cols; jj += tile_D2) {
@@ -111,6 +111,21 @@ std::vector<int> tile_transpose(const std::vector<int>& mat, int rows, int cols,
     }
 
     return transposed;
+}
+
+
+// GPU tile transpose (to be)
+__global__ void gpu_tile_transpose(int *d_matrix_1, int *d_matrix_res, int rows, int cols, int tile_D1, int tile_D2) {
+
+    unsigned int i = blockIdx.x*blockDim.x + threadIdx.x;
+    unsigned int j = blockIdx.y*blockDim.y + threadIdx.y;
+
+    if (i >= rows)
+        return;
+    if (j >= cols)
+        return;
+    
+    d_matrix_res[j*rows + i] = d_matrix_1[i*cols + j];
 }
 
 
@@ -151,6 +166,38 @@ int main(int argc, char *argv[]) {
         auto end = chrono::high_resolution_clock::now();
         chrono::duration<double, milli> duration = end - start;
         cout << "CPU function took " << duration.count() << " ms\n";
+    }
+    else if (c==1) {
+        // memory allocation on GPU
+        cudaMalloc(&d_matrix_1, no_of_rows_of_matrix_1*no_of_cols_of_matrix_1*sizeof(int));
+        cudaMalloc(&d_matrix_res, no_of_rows_of_matrix_1*no_of_cols_of_matrix_1*sizeof(int));
+
+        // transfering matcrix_1 to GPU
+        cudaMemcpy(d_matrix_1, matrix_1.data(), no_of_rows_of_matrix_1*no_of_cols_of_matrix_1*sizeof(int), cudaMemcpyHostToDevice);
+
+        unsigned int no_of_blocks_x = ceil((1.0*no_of_rows_of_matrix_1) / tile_m);
+        unsigned int no_of_blocks_y = ceil((1.0*no_of_cols_of_matrix_1) / tile_n);
+
+        cout << "no of blocks_x: " << no_of_blocks_x << endl;
+        cout << "no of blocks_y: " << no_of_blocks_y << endl;
+
+        // block & grid creation
+        dim3 block(tile_m, tile_n);
+        dim3 grid(no_of_blocks_x, no_of_blocks_y);
+
+        //timing
+        auto start = chrono::high_resolution_clock::now();
+
+        gpu_tile_transpose<<<grid, block>>>(d_matrix_1, d_matrix_res, no_of_rows_of_matrix_1, no_of_cols_of_matrix_1, tile_m, tile_n);
+        cudaDeviceSynchronize();
+
+        auto end = chrono::high_resolution_clock::now();
+        chrono::duration<double, milli> duration = end-start;
+
+        cout << "GPU function took " << duration.count() << " ms\n";
+
+        //transferring resultant matrix into host
+        cudaMemcpy(matrix_res.data(), d_matrix_res, no_of_rows_of_matrix_1 * no_of_cols_of_matrix_1 * sizeof(int), cudaMemcpyDeviceToHost);
     }
     // printing the op
     for (size_t i = 0; i < no_of_cols_of_matrix_1; i++)

@@ -69,8 +69,8 @@ int *read_from_csv(const string& filename, vector<int>& data) {
 }
 
 // CPU transpose
-std::vector<int> transpose(const std::vector<int>& mat, int rows, int cols) {
-    std::vector<int> transposed(cols * rows);
+vector<int> transpose(const vector<int>& mat, int rows, int cols) {
+    vector<int> transposed(cols * rows);
 
     for (int i = 0; i < rows; i++) {
         for (int j = 0; j < cols; j++) {
