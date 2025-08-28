@@ -86,9 +86,14 @@ std::vector<int> transpose(const std::vector<int>& mat, int rows, int cols) {
 __global__ void gpu_tanspose(int *d_matrix_1, int *d_matrix_res, int rows, int cols) {
 
     unsigned int id_1 = blockIdx.x*blockDim.x + threadIdx.x;
-    unsigned int id_2 = threadIdx.x*blockDim.x + blockIdx.x;
+    if (id_1 > (rows*cols - 1))
+        return;
+    
+    // unsigned int id_2 = threadIdx.x*blockDim.x + blockIdx.x;
+    unsigned int i = id_1 / cols;
+    unsigned int j = id_1 % cols;
 
-    d_matrix_res[id_2] = d_matrix_1[id_1];
+    d_matrix_res[j*rows + i] = d_matrix_1[i*cols + j];
 }
 
 void write_matrix_to_csv(const string& filename, const vector<int>& mat, int rows, int cols) {
@@ -146,9 +151,18 @@ int main() {
         // transfering matcrix_1 to GPU
         cudaMemcpy(d_matrix_1, matrix_1.data(), no_of_rows_of_matrix_1*no_of_cols_of_matrix_1*sizeof(int), cudaMemcpyHostToDevice);
 
+        // unsigned no_of_bloks = no_of_rows_of_matrix_1/2;
+        // unsigned no_of_threads_per_blocks = no_of_cols_of_matrix_1*2;
+
+        unsigned no_of_threads_per_blocks = 8;
+        unsigned no_of_blocks = ceil((1.0 * no_of_rows_of_matrix_1 * no_of_cols_of_matrix_1)/no_of_threads_per_blocks);
+        cout << "no of blocks: " << no_of_blocks << endl;
+
         // timing
         auto start = chrono::high_resolution_clock::now();
-        gpu_tanspose<<<no_of_rows_of_matrix_1, no_of_cols_of_matrix_1>>>(d_matrix_1, d_matrix_res, no_of_rows_of_matrix_1, no_of_cols_of_matrix_1);
+
+        gpu_tanspose<<<no_of_blocks, no_of_threads_per_blocks>>>(d_matrix_1, d_matrix_res, no_of_rows_of_matrix_1, no_of_cols_of_matrix_1);
+
         cudaDeviceSynchronize();
         auto end = chrono::high_resolution_clock::now();
         chrono::duration<double, milli> duration = end-start;
