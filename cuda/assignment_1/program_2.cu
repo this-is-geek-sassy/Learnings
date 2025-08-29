@@ -130,7 +130,47 @@ __global__ void gpu_tile_mat_mul(int *d_matrix_1, int *d_matrix_2, int *d_matrix
     int *v_tile_1 = p_tile;
     int *v_tile_2 = p_tile + tile_D*tile_D;
 
-    // unsigned int i = 
+    unsigned int i = blockIdx.x*blockDim.x + threadIdx.x;
+    unsigned int j = blockIdx.y*blockDim.y + threadIdx.y;
+
+    // if (i >= m)
+    //     return;
+    // if (j >= k)
+    //     return;
+    
+    int sum = 0;
+    for (size_t t = 0; t < ceil((double)n/tile_D); t++) {
+
+        // Load A tile
+        if (i < m && (t*tile_D + threadIdx.y) < n) {
+            v_tile_1[threadIdx.x*tile_D + threadIdx.y] =
+                d_matrix_1[i*n + (t*tile_D + threadIdx.y)];
+        } else {
+            v_tile_1[threadIdx.x*tile_D + threadIdx.y] = 0;
+        }
+
+        // Load B tile
+        if (j < k && (t*tile_D + threadIdx.x) < n) {
+            v_tile_2[threadIdx.x*tile_D + threadIdx.y] =
+                d_matrix_2[(t*tile_D + threadIdx.x)*k + j];
+        } else {
+            v_tile_2[threadIdx.x*tile_D + threadIdx.y] = 0;
+        }
+
+        __syncthreads(); // now safe to use v_tile_1, v_tile_2 for this tile
+
+        // multiply-accumulate with this tile
+        // int sum = 0;
+        for (int l = 0; l < tile_D; l++) {
+            sum += v_tile_1[threadIdx.x * tile_D + l] * v_tile_2[l * tile_D + threadIdx.y];
+        }
+
+        __syncthreads(); // before loading next tile
+    }
+    if (i < m && j < k) {
+        d_matrix_res[i*k + j] = sum;
+    }
+
 }
 
 /// TESTING WITH TRANSPOSE
