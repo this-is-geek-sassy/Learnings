@@ -114,7 +114,7 @@ vector<int> tile_transpose(const vector<int>& mat, int rows, int cols, int tile_
 }
 
 
-// GPU tile transpose (to be)
+// GPU tile transpose
 __global__ void gpu_tile_transpose(int *d_matrix_1, int *d_matrix_res, int rows, int cols, int tile_D1, int tile_D2) {
 
     extern __shared__ int tile[];

@@ -125,9 +125,12 @@ void tile_mat_mul (vector<int>& m1, vector<int>& m2, vector<int>& result, int m,
 // Tile matrix multiple multiplication
 __global__ void gpu_tile_mat_mul(int *d_matrix_1, int *d_matrix_2, int *d_matrix_res, int m, int n, int k, int tile_D) {
 
-    extern __shared__ int tile[];
+    extern __shared__ int p_tile[];
 
+    int *v_tile_1 = p_tile;
+    int *v_tile_2 = p_tile + tile_D*tile_D;
 
+    // unsigned int i = 
 }
 
 /// TESTING WITH TRANSPOSE
@@ -191,22 +194,22 @@ int main(int argc, char *argv[]) {
         // return 0;
     }
 
-    int * dimensions_1 = read_from_csv("./public_test_cases/matrix_a.csv", matrix_1);
-    int *dimensions_2 = read_from_csv("./public_test_cases/matrix_b.csv", matrix_2);
+    int * dimensions_1 = read_from_csv("./public_test_cases/matrix1.csv", matrix_1);
+    int *dimensions_2 = read_from_csv("./public_test_cases/matrix2.csv", matrix_2);
 
     int no_of_rows_of_matrix_1 = dimensions_1[0];
     int no_of_cols_of_matrix_1 = dimensions_1[1];
 
-    // int no_of_rows_of_matrix_2 = dimensions_2[0];
-    // int no_of_cols_of_matrix_2 = dimensions_2[1];
+    int no_of_rows_of_matrix_2 = dimensions_2[0];
+    int no_of_cols_of_matrix_2 = dimensions_2[1];
 
-    /// TESTING WITH TRANSPOSE
-    /// BEGIN
-    int no_of_rows_of_matrix_2 = dimensions_2[1];
-    int no_of_cols_of_matrix_2 = dimensions_2[0];
+    // /// TESTING WITH TRANSPOSE
+    // /// BEGIN
+    // int no_of_rows_of_matrix_2 = dimensions_2[1];
+    // int no_of_cols_of_matrix_2 = dimensions_2[0];
 
-    matrix_2 = transpose(matrix_2, no_of_rows_of_matrix_2, no_of_cols_of_matrix_2);
-    /// END
+    // matrix_2 = transpose(matrix_2, no_of_rows_of_matrix_2, no_of_cols_of_matrix_2);
+    // /// END
 
     if (no_of_cols_of_matrix_1 != no_of_rows_of_matrix_2) {
         cout << "DIMENSION MISMATCH, CANNOT PROCEED!!" << endl;
@@ -235,11 +238,22 @@ int main(int argc, char *argv[]) {
         cudaMemcpy(d_matrix_2, matrix_2.data(), no_of_rows_of_matrix_2*no_of_cols_of_matrix_2*sizeof(int), cudaMemcpyHostToDevice);
 
         // setting launch config:
+        unsigned int no_of_blocks_x = ceil((1.0*no_of_rows_of_matrix_1) / tile_m);
+        unsigned int no_of_blocks_y = ceil((1.0*no_of_cols_of_matrix_1) / tile_n);
+        unsigned int shared_memory_size = tile_m * tile_n * sizeof(int) * 2;
+
+        cout << "no of blocks_x: " << no_of_blocks_x << endl;
+        cout << "no of blocks_y: " << no_of_blocks_y << endl;
+        cout << "shared mem size: " << shared_memory_size << endl;
         
+        // block & grid creation:
+        dim3 block(tile_m, tile_n);
+        dim3 grid(no_of_blocks_x, no_of_blocks_y);
 
         // timing
         auto start = chrono::high_resolution_clock::now();
-        // kernel_call<<<>>>
+        gpu_tile_mat_mul<<<grid, block, shared_memory_size>>>(d_matrix_1, d_matrix_2, d_matrix_result, no_of_rows_of_matrix_1, no_of_cols_of_matrix_1, no_of_cols_of_matrix_2, tile_m);
+
         cudaDeviceSynchronize();
         auto end = chrono::high_resolution_clock::now();
         chrono::duration<double, milli> duration = end-start;
