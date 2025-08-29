@@ -259,6 +259,7 @@ int main(int argc, char *argv[]) {
     vector<int> result(no_of_rows_of_matrix_1 * no_of_cols_of_matrix_2);
     // result.resize(no_of_rows, vector<int>(no_of_cols, 0));
 
+
     if (c == 0) {
         auto start = chrono::high_resolution_clock::now();
         ordinary_mat_mul(matrix_1, matrix_2, result, no_of_rows_of_matrix_1, no_of_cols_of_matrix_1, no_of_cols_of_matrix_2, tile_m);
@@ -267,7 +268,6 @@ int main(int argc, char *argv[]) {
         cout << "CPU function took " << duration.count() << " ms\n";
     }
     else if (c==1) {
-
         // mem allocation on gpu
         cudaMalloc(&d_matrix_1, no_of_rows_of_matrix_1*no_of_cols_of_matrix_1*sizeof(int));
         cudaMalloc(&d_matrix_2, no_of_rows_of_matrix_2*no_of_cols_of_matrix_2*sizeof(int));
@@ -302,6 +302,11 @@ int main(int argc, char *argv[]) {
 
         // transferring resultant matrix into cpu
         cudaMemcpy(result.data(), d_matrix_result, no_of_rows_of_matrix_1 * no_of_cols_of_matrix_2 * sizeof(int), cudaMemcpyDeviceToHost);
+
+        // Free GPU memory
+        cudaFree(d_matrix_1);
+        cudaFree(d_matrix_2);
+        cudaFree(d_matrix_result);
     }
 
     // cout << *result.data() << endl;
