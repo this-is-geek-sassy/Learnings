@@ -127,11 +127,39 @@ __global__ void gpu_tile_transpose(int *d_matrix_1, int *d_matrix_res, int rows,
     if (j >= cols)
         return;
 
-    tile[threadIdx.x*tile_D2 + threadIdx.y] = d_matrix_1[i*cols + j];
+    tile[threadIdx.y*tile_D1 + threadIdx.x] = d_matrix_1[i*cols + j];
     __syncthreads();
 
     // d_matrix_res[j*rows + i] = d_matrix_1[i*cols + j];
-    d_matrix_res[j*rows + i] = tile[threadIdx.x*tile_D2 + threadIdx.y];
+
+    // unsigned int ti = blockIdx.y*blockDim.y + threadIdx.y;
+    // unsigned int tj = blockIdx.x*blockDim.x + threadIdx.x;
+    // if (ti >= cols)
+    //     return;
+    // if (tj >= rows)
+    //     return;
+    
+    // d_matrix_res[tj*rows + ti] = tile[threadIdx.y*tile_D1 + threadIdx.x];
+
+    // DEBUG: Print the transposed tile (only thread (0,0) of block (0,0) does this)
+    if (threadIdx.x == 0 && threadIdx.y == 0 && blockIdx.x == 0 && blockIdx.y == 0) {
+        printf("\n=== Block (%d, %d) - Transposed Tile in Shared Memory ===\n", blockIdx.x, blockIdx.y);
+        printf("Original block covers rows [%d-%d], cols [%d-%d]\n", 
+               blockIdx.x * tile_D1, min((int)rows-1, (int)(blockIdx.x * tile_D1 + tile_D1 - 1)),
+               blockIdx.y * tile_D2, min((int)cols-1, (int)(blockIdx.y * tile_D2 + tile_D2 - 1)));
+        
+        // Print the tile row by row (tile is now tile_D2 x tile_D1 due to transpose)
+        for (int i = 0; i < tile_D2 && (blockIdx.y * tile_D2 + i) < cols; i++) {
+            printf("Row %d: ", i);
+            for (int j = 0; j < tile_D1 && (blockIdx.x * tile_D1 + j) < rows; j++) {
+                printf("%4d ", tile[i * tile_D1 + j]);
+            }
+            printf("\n");
+        }
+        printf("=====================================\n");
+    }
+    
+    __syncthreads(); // Make sure printing is done before proceeding
 }
 
 
