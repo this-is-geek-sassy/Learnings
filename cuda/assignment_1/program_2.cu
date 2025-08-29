@@ -1,5 +1,6 @@
 #include <bits/stdc++.h>
 #include <cuda.h>
+
 using namespace std;
 
 int *read_from_csv(const string& filename, vector<int>& data) {
@@ -67,7 +68,8 @@ int *read_from_csv(const string& filename, vector<int>& data) {
     return dimensions;
 }
 
-void mat_mul (vector<int>& m1, vector<int>& m2, vector<int>& result, int m, int n, int k)
+// CPU matrix multiplication without tilling
+void ordinary_mat_mul (vector<int>& m1, vector<int>& m2, vector<int>& result, int m, int n, int k, int tile_D)
 {
     // int m = m1.size(), n = m2.size(), k = m2[0].size();
     for (size_t i = 0; i < m; i++)
@@ -82,21 +84,50 @@ void mat_mul (vector<int>& m1, vector<int>& m2, vector<int>& result, int m, int 
     }
 }
 
-__global__ void gpu_mat_mul(int *d_matrix_1, int *d_matrix_2, int *d_matrix_res, int m, int n, int k) {
-
-    unsigned int id = blockIdx.x*blockDim.x + threadIdx.x;
-
-    // cout << blockIdx.x << " " << threadIdx.x << endl;
-    // printf("%d %d\n", blockIdx.x, threadIdx.x);
-
-    unsigned int i = blockIdx.x;
-    unsigned j = threadIdx.x;
-
-    for (size_t l = 0; l < n; l++)
+// CPU tile_mat_mul
+void tile_mat_mul (vector<int>& m1, vector<int>& m2, vector<int>& result, int m, int n, int k, int tile_D)
+{
+    // int m = m1.size(), n = m2.size(), k = m2[0].size();
+    for (size_t ii = 0; ii < m; ii += tile_D)
     {
-        d_matrix_res[id] += (d_matrix_1[i*n + l] * d_matrix_2[l*k + j]);
+        for (size_t jj = 0; jj < k; jj += tile_D)
+        {
+            for (size_t ll = 0; ll < n; ll += tile_D)
+            {
+                // INNER LOOPS STARTING
+                for (size_t i=ii; i<ii+tile_D; i++) {
+
+                    if (i >= m)
+                        continue;
+
+                    for(size_t j=jj; j<jj+tile_D; j++) {
+
+                        if (j >= k)
+                            continue;
+                        
+                        // int sum = 0;
+                        for(size_t l=ll; l<ll+tile_D; l++) {
+
+                            if (l >= n)
+                                continue;
+
+                            result[i*k + j] += (m1[i*n + l] * m2[l*k + j]);
+                        }
+                        // result[i*k + j] = sum;
+                    }
+                }
+                // return;
+            }
+        }
     }
-    
+}
+
+// Tile matrix multiple multiplication
+__global__ void gpu_tile_mat_mul(int *d_matrix_1, int *d_matrix_2, int *d_matrix_res, int m, int n, int k, int tile_D) {
+
+    extern __shared__ int tile[];
+
+
 }
 
 /// TESTING WITH TRANSPOSE
@@ -136,10 +167,17 @@ void write_matrix_to_csv(const string& filename, const vector<int>& mat, int row
     file.close();
 }
 
-int main() {
-    // int no_of_rows = 5;
-    // int no_of_cols = 5;
-    // vector<int> matrix_1(no_of_rows*no_of_cols), matrix_2(no_of_rows*no_of_cols);
+
+int main(int argc, char *argv[]) {
+
+    if (argc != 2) {
+        cout << "WRONG NUMBER OF ARGUMENTS!!" << endl;
+        exit(0);
+    }
+
+    int tile_m = atoi(argv[1]);
+    int tile_n = tile_m;   // taking square tiles for now
+
     vector<int> matrix_1, matrix_2;
     int *d_matrix_1, *d_matrix_2, *d_matrix_result;
 
@@ -153,25 +191,9 @@ int main() {
         // return 0;
     }
 
-    // for (size_t i = 0; i < 5; i++)
-    // {
-    //     // vector<int> v;
-    //     for (size_t j = 0; j < 5; j++)
-    //     {
-    //         // if (i==j)
-    //         //     v.push_back(7);
-    //         // else
-    //         //     v.push_back(0);
-    //         // // v.push_back(i+j);
-    //         matrix_1[i*no_of_cols + j] = i+j;
-    //         matrix_2[i*no_of_cols + j] = i+j;
-    //     }
-    //     // matrix_1.push_back(v);
-    //     // matrix_2.push_back(v);
-    // }
     int * dimensions_1 = read_from_csv("./public_test_cases/matrix_a.csv", matrix_1);
     int *dimensions_2 = read_from_csv("./public_test_cases/matrix_b.csv", matrix_2);
-    
+
     int no_of_rows_of_matrix_1 = dimensions_1[0];
     int no_of_cols_of_matrix_1 = dimensions_1[1];
 
@@ -196,36 +218,14 @@ int main() {
 
     if (c == 0) {
         auto start = chrono::high_resolution_clock::now();
-        mat_mul(matrix_1, matrix_2, result, no_of_rows_of_matrix_1, no_of_cols_of_matrix_1, no_of_cols_of_matrix_2);
+        ordinary_mat_mul(matrix_1, matrix_2, result, no_of_rows_of_matrix_1, no_of_cols_of_matrix_1, no_of_cols_of_matrix_2, tile_m);
         auto end = chrono::high_resolution_clock::now();
         chrono::duration<double, milli> duration = end - start;
         cout << "CPU function took " << duration.count() << " ms\n";
     }
+    else if (c==1) {
 
-    // // printing
-    // for (size_t i = 0; i < no_of_rows_of_matrix_1; i++)
-    // {
-    //     for (size_t j = 0; j < no_of_cols_of_matrix_1; j++)
-    //     {
-    //         cout << matrix_1[i*no_of_cols_of_matrix_1 + j] << " ";
-    //     }
-    //     cout << endl;
-    // }
-    // cout << endl;
-    // for (size_t i = 0; i < no_of_rows_of_matrix_2; i++)
-    // {
-    //     for (size_t j = 0; j < no_of_cols_of_matrix_2; j++)
-    //     {
-    //         cout << matrix_2[i*no_of_cols_of_matrix_2 + j] << " ";
-    //     }
-    //     cout << endl;
-    // }
-    // cout << endl;
-
-    // return 0;
-
-    else if (c == 1) {
-        // allocation on GPu
+        // mem allocation on gpu
         cudaMalloc(&d_matrix_1, no_of_rows_of_matrix_1*no_of_cols_of_matrix_1*sizeof(int));
         cudaMalloc(&d_matrix_2, no_of_rows_of_matrix_2*no_of_cols_of_matrix_2*sizeof(int));
         cudaMalloc(&d_matrix_result, no_of_rows_of_matrix_1*no_of_cols_of_matrix_2*sizeof(int));
@@ -234,9 +234,12 @@ int main() {
         cudaMemcpy(d_matrix_1, matrix_1.data(), no_of_rows_of_matrix_1*no_of_cols_of_matrix_1*sizeof(int), cudaMemcpyHostToDevice);
         cudaMemcpy(d_matrix_2, matrix_2.data(), no_of_rows_of_matrix_2*no_of_cols_of_matrix_2*sizeof(int), cudaMemcpyHostToDevice);
 
-        //timing
+        // setting launch config:
+        
+
+        // timing
         auto start = chrono::high_resolution_clock::now();
-        gpu_mat_mul<<<no_of_rows_of_matrix_1,no_of_cols_of_matrix_2>>> (d_matrix_1, d_matrix_2, d_matrix_result, no_of_rows_of_matrix_1, no_of_cols_of_matrix_1, no_of_cols_of_matrix_2);
+        // kernel_call<<<>>>
         cudaDeviceSynchronize();
         auto end = chrono::high_resolution_clock::now();
         chrono::duration<double, milli> duration = end-start;
@@ -249,14 +252,14 @@ int main() {
 
     // cout << *result.data() << endl;
 
-    for (size_t i = 0; i < no_of_rows_of_matrix_1; i++)
-    {
-        for (size_t j = 0; j < no_of_cols_of_matrix_2; j++)
-        {
-            cout << result[i*no_of_cols_of_matrix_2 + j] << " ";
-        }
-        cout << endl;
-    }
+    // for (size_t i = 0; i < no_of_rows_of_matrix_1; i++)
+    // {
+    //     for (size_t j = 0; j < no_of_cols_of_matrix_2; j++)
+    //     {
+    //         cout << result[i*no_of_cols_of_matrix_2 + j] << " ";
+    //     }
+    //     cout << endl;
+    // }
     write_matrix_to_csv("./result.csv", result, no_of_rows_of_matrix_1, no_of_cols_of_matrix_2);
     
     return 0;

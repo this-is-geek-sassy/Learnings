@@ -189,6 +189,7 @@ int main(int argc, char *argv[]) {
         // transfering matcrix_1 to GPU
         cudaMemcpy(d_matrix_1, matrix_1.data(), no_of_rows_of_matrix_1*no_of_cols_of_matrix_1*sizeof(int), cudaMemcpyHostToDevice);
 
+        // setting launch config:
         unsigned int no_of_blocks_x = ceil((1.0*no_of_rows_of_matrix_1) / tile_m);
         unsigned int no_of_blocks_y = ceil((1.0*no_of_cols_of_matrix_1) / tile_n);
 
