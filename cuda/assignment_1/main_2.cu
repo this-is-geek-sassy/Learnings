@@ -213,13 +213,15 @@ void write_matrix_to_csv(const string& filename, const vector<int>& mat, int row
 
 int main(int argc, char *argv[]) {
 
-    if (argc != 2) {
+    if (argc != 4) {
         cout << "WRONG NUMBER OF ARGUMENTS!!" << endl;
         exit(0);
     }
 
     int tile_m = atoi(argv[1]);
     int tile_n = tile_m;   // taking square tiles for now
+    string path_to_mat_a = argv[2];
+    string path_to_mat_b = argv[3];
 
     vector<int> matrix_1, matrix_2;
     int *d_matrix_1, *d_matrix_2, *d_matrix_result;
@@ -234,8 +236,10 @@ int main(int argc, char *argv[]) {
         // return 0;
     }
 
-    int * dimensions_1 = read_from_csv("./public_test_cases/matrix1.csv", matrix_1);
-    int *dimensions_2 = read_from_csv("./public_test_cases/matrix2.csv", matrix_2);
+    // int * dimensions_1 = read_from_csv("./public_test_cases/matrix1.csv", matrix_1);
+    // int *dimensions_2 = read_from_csv("./public_test_cases/matrix2.csv", matrix_2);
+    int * dimensions_1 = read_from_csv(path_to_mat_a, matrix_1);
+    int *dimensions_2 = read_from_csv(path_to_mat_b, matrix_2);
 
     int no_of_rows_of_matrix_1 = dimensions_1[0];
     int no_of_cols_of_matrix_1 = dimensions_1[1];
@@ -265,7 +269,7 @@ int main(int argc, char *argv[]) {
         ordinary_mat_mul(matrix_1, matrix_2, result, no_of_rows_of_matrix_1, no_of_cols_of_matrix_1, no_of_cols_of_matrix_2, tile_m);
         auto end = chrono::high_resolution_clock::now();
         chrono::duration<double, milli> duration = end - start;
-        cout << "CPU function took " << duration.count() << " ms\n";
+        cout << "CPU function took " << duration.count()*1000 << " micro seconds\n";
     }
     else if (c==1) {
         // mem allocation on gpu
@@ -291,14 +295,27 @@ int main(int argc, char *argv[]) {
         dim3 grid(no_of_blocks_x, no_of_blocks_y);
 
         // timing
-        auto start = chrono::high_resolution_clock::now();
+        // auto start = chrono::high_resolution_clock::now();
+        cudaEvent_t start, stop;
+        cudaEventCreate(&start);
+        cudaEventCreate(&stop);
+        
+        cudaEventRecord(start);
         gpu_tile_mat_mul<<<grid, block, shared_memory_size>>>(d_matrix_1, d_matrix_2, d_matrix_result, no_of_rows_of_matrix_1, no_of_cols_of_matrix_1, no_of_cols_of_matrix_2, tile_m);
 
-        cudaDeviceSynchronize();
-        auto end = chrono::high_resolution_clock::now();
-        chrono::duration<double, milli> duration = end-start;
+        cudaEventRecord(stop);
+        cudaEventSynchronize(stop);
 
-        cout << "GPU function took " << duration.count() << " ms\n";
+        float ms = 0.0f;
+        cudaEventElapsedTime(&ms, start, stop);
+
+        printf("Kernel elapsed time: %.3f microseconds\n", ms * 1000);
+
+        // cudaDeviceSynchronize();
+        // auto end = chrono::high_resolution_clock::now();
+        // chrono::duration<double, milli> duration = end-start;
+
+        // cout << "GPU function took " << duration.count() << " ms\n";
 
         // transferring resultant matrix into cpu
         cudaMemcpy(result.data(), d_matrix_result, no_of_rows_of_matrix_1 * no_of_cols_of_matrix_2 * sizeof(int), cudaMemcpyDeviceToHost);
@@ -319,7 +336,7 @@ int main(int argc, char *argv[]) {
     //     }
     //     cout << endl;
     // }
-    write_matrix_to_csv("./result.csv", result, no_of_rows_of_matrix_1, no_of_cols_of_matrix_2);
+    write_matrix_to_csv("./result_2.csv", result, no_of_rows_of_matrix_1, no_of_cols_of_matrix_2);
     
     return 0;
 }

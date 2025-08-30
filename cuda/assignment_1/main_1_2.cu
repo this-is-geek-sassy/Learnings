@@ -293,14 +293,14 @@ int main(int argc, char *argv[]) {
 
     // cout << *result.data() << endl;
 
-    for (size_t i = 0; i < no_of_rows_of_matrix_1; i++)
-    {
-        for (size_t j = 0; j < no_of_cols_of_matrix_2; j++)
-        {
-            cout << result[i*no_of_cols_of_matrix_2 + j] << " ";
-        }
-        cout << endl;
-    }
+    // for (size_t i = 0; i < no_of_rows_of_matrix_1; i++)
+    // {
+    //     for (size_t j = 0; j < no_of_cols_of_matrix_2; j++)
+    //     {
+    //         cout << result[i*no_of_cols_of_matrix_2 + j] << " ";
+    //     }
+    //     cout << endl;
+    // }
     write_matrix_to_csv("./result_1_2.csv", result, no_of_rows_of_matrix_1, no_of_cols_of_matrix_2);
     
     return 0;
