@@ -45,7 +45,7 @@ All CUDA programs expect command line arguments as follows:
 ### main_1_1.cu
 **Usage:**
 ```
-./main_1_1 <block_size> <path_to_matrix_a> <path_to_matrix_b>
+./target/main_1_1 <block_size> <path_to_matrix_a> <path_to_matrix_b>
 ```
 - `<block_size>`: Block Size, i.e., #Threads in a block.
 - `<path_to_matrix_a>`: Path to first input matrix CSV file.
@@ -54,7 +54,7 @@ All CUDA programs expect command line arguments as follows:
 ### main_1_2.cu
 **Usage:**
 ```
-./main_1_2 <block_size_x2> <block_size_y2> <path_to_matrix_a> <path_to_matrix_b>
+./target/main_1_2 <block_size_x2> <block_size_y2> <path_to_matrix_a> <path_to_matrix_b>
 ```
 - `<block_size_x2>`: x dimension of 2D Block Size, i.e., #Threads in a block in x dim. (integer).
 - `<block_size_y2>`: y dimension of 2D Block Size, i.e., #Threads in a block in y dim. (integer).
@@ -64,7 +64,7 @@ All CUDA programs expect command line arguments as follows:
 ### main_2.cu
 **Usage:**
 ```
-./main_2 <tile_m> <path_to_matrix_a> <path_to_matrix_b>
+./target/main_2 <tile_m> <path_to_matrix_a> <path_to_matrix_b>
 ```
 - `<tile_m>`: Tile size for rows (integer).
 - `<tile_n>`: Tile size for columns (This is an internal variable, kept equal to `tile_m`) (integer).
@@ -74,7 +74,7 @@ All CUDA programs expect command line arguments as follows:
 ### main_3.cu
 **Usage:**
 ```
-./main_3 <block_size> <path_to_matrix_a>
+./target/main_3 <block_size> <path_to_matrix_a>
 ```
 - `<block_size>`: Block Size, i.e., #Threads in a block.
 - `<path_to_matrix_a>`: Path to the input matrix CSV file.
@@ -82,7 +82,7 @@ All CUDA programs expect command line arguments as follows:
 ### main_4.cu
 **Usage:**
 ```
-./main_4 <tile_m> <tile_n> <path_to_matrix>
+./target/main_4 <tile_m> <tile_n> <path_to_matrix>
 ```
 - `<tile_m>`: Tile size for rows (integer).
 - `<tile_n>`: Tile size for columns (integer). (in general for this program, you may give rectangular tiles also.)
