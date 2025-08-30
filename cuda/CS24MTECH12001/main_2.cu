@@ -396,7 +396,8 @@ int main(int argc, char *argv[]) {
     //     }
     //     cout << endl;
     // }
-    write_matrix_to_csv("./results/result_2.csv", result, no_of_rows_of_matrix_1, no_of_cols_of_matrix_2);
+    // write_matrix_to_csv("./results/output_2_CS24MTECH12001.csv", result, no_of_rows_of_matrix_1, no_of_cols_of_matrix_2);
+    write_matrix_to_csv("./output_2_CS24MTECH12001.csv", result, no_of_rows_of_matrix_1, no_of_cols_of_matrix_2);
     
     return 0;
 }

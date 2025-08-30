@@ -84,25 +84,23 @@ void mat_mul (vector<int>& m1, vector<int>& m2, vector<int>& result, int m, int 
 
 __global__ void gpu_mat_mul(int *d_matrix_1, int *d_matrix_2, int *d_matrix_res, int m, int n, int k) {
 
-    // row pointer
-    unsigned int i = blockIdx.x*blockDim.x + threadIdx.x;
-    unsigned int j = blockIdx.y*blockDim.y + threadIdx.y;
+    unsigned int id = blockIdx.x*blockDim.x + threadIdx.x;
 
-    if (i >= m || j >= k)
+    if (id >= (m*k))
         return;
 
     // cout << blockIdx.x << " " << threadIdx.x << endl;
     // printf("%d %d\n", blockIdx.x, threadIdx.x);
 
-    // unsigned int i = id / k;
-    // unsigned j = id % k;
+    unsigned int i = id / k;
+    unsigned j = id % k;
 
     int sum = 0;
     for (size_t l = 0; l < n; l++)
     {
         sum += (d_matrix_1[i*n + l] * d_matrix_2[l*k + j]);
     }
-    d_matrix_res[i*k + j] = sum;
+    d_matrix_res[id] = sum;
 }
 
 /// TESTING WITH TRANSPOSE
@@ -144,16 +142,15 @@ void write_matrix_to_csv(const string& filename, const vector<int>& mat, int row
 
 int main(int argc, char *argv[]) {
 
-    if (argc != 5) {
+    if (argc != 4) {
         cout << "WRONG NUMBER OF ARGUMENTS!!" << endl;
         exit(0);
     }
     // user only give blocksize, i.e., how many threads should be there per block
     // we will calculae grid_size based on that
-    unsigned int block_size_x2 = atoi(argv[1]);
-    unsigned int block_size_y2 = atoi(argv[2]);
-    string path_to_mat_a = argv[3];
-    string path_to_mat_b = argv[4];
+    unsigned int block_size = atoi(argv[1]);
+    string path_to_mat_a = argv[2];
+    string path_to_mat_b = argv[3];
 
     // int no_of_rows = 5;
     // int no_of_cols = 5;
@@ -189,7 +186,6 @@ int main(int argc, char *argv[]) {
     // }
     // int * dimensions_1 = read_from_csv("./public_test_cases/matrix1.csv", matrix_1);
     // int *dimensions_2 = read_from_csv("./public_test_cases/matrix2.csv", matrix_2);
-
     int * dimensions_1 = read_from_csv(path_to_mat_a, matrix_1);
     int *dimensions_2 = read_from_csv(path_to_mat_b, matrix_2);
     
@@ -316,23 +312,18 @@ int main(int argc, char *argv[]) {
         cudaMemcpy(d_matrix_2, matrix_2.data(), no_of_rows_of_matrix_2*no_of_cols_of_matrix_2*sizeof(int), cudaMemcpyHostToDevice);
 
         // setting launch config: 
-        // unsigned int block_size_x2 : already available
-        // unsigned int block_size_y2 : already available
-        unsigned int grid_size_x1 = ceil((1.0*no_of_rows_of_matrix_1*no_of_cols_of_matrix_2)/block_size_x2);
-
-        unsigned int grid_size_y1 = ceil((1.0*no_of_rows_of_matrix_1*no_of_cols_of_matrix_2)/block_size_y2);
-
-        dim3 grid(grid_size_x1, grid_size_y1);
-        dim3 block(block_size_x2, block_size_y2);
+        //unsigned int block_size : already available
+        unsigned int grid_size = ceil((1.0*no_of_rows_of_matrix_1*no_of_cols_of_matrix_2)/block_size);
 
         //timing
         // auto start = chrono::high_resolution_clock::now();
+        
         cudaEvent_t start, stop;
         cudaEventCreate(&start);
         cudaEventCreate(&stop);
-
+        
         cudaEventRecord(start);
-        gpu_mat_mul<<<grid, block>>> (d_matrix_1, d_matrix_2, d_matrix_result, no_of_rows_of_matrix_1, no_of_cols_of_matrix_1, no_of_cols_of_matrix_2);
+        gpu_mat_mul<<<grid_size, block_size>>> (d_matrix_1, d_matrix_2, d_matrix_result, no_of_rows_of_matrix_1, no_of_cols_of_matrix_1, no_of_cols_of_matrix_2);
         cudaEventRecord(stop);
         cudaEventSynchronize(stop);
 
@@ -361,7 +352,8 @@ int main(int argc, char *argv[]) {
     //     }
     //     cout << endl;
     // }
-    write_matrix_to_csv("./results/result_1_2.csv", result, no_of_rows_of_matrix_1, no_of_cols_of_matrix_2);
+    // write_matrix_to_csv("./results/output_1_1_CS24MTECH12001.csv", result, no_of_rows_of_matrix_1, no_of_cols_of_matrix_2);
+    write_matrix_to_csv("./public_test_cases/output_1_1_CS24MTECH12001.csv", result, no_of_rows_of_matrix_1, no_of_cols_of_matrix_2);
     
     return 0;
 }

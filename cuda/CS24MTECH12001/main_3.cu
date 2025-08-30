@@ -68,6 +68,34 @@ int *read_from_csv(const string& filename, vector<int>& data) {
     return dimensions;
 }
 
+// CPU transpose
+vector<int> transpose(const vector<int>& mat, int rows, int cols) {
+    vector<int> transposed(cols * rows);
+
+    for (int i = 0; i < rows; i++) {
+        for (int j = 0; j < cols; j++) {
+            // element at (i,j) in original goes to (j,i) in transposed
+            transposed[j * rows + i] = mat[i * cols + j];
+        }
+    }
+
+    return transposed;
+}
+
+// gpu transpose
+__global__ void gpu_tanspose(int *d_matrix_1, int *d_matrix_res, int rows, int cols) {
+
+    unsigned int id_1 = blockIdx.x*blockDim.x + threadIdx.x;
+    if (id_1 > (rows*cols - 1))
+        return;
+    
+    // unsigned int id_2 = threadIdx.x*blockDim.x + blockIdx.x;
+    unsigned int i = id_1 / cols;
+    unsigned int j = id_1 % cols;
+
+    d_matrix_res[j*rows + i] = d_matrix_1[i*cols + j];
+}
+
 void write_matrix_to_csv(const string& filename, const vector<int>& mat, int rows, int cols) {
     ofstream file(filename);
 
@@ -88,74 +116,14 @@ void write_matrix_to_csv(const string& filename, const vector<int>& mat, int row
     file.close();
 }
 
-// CPU tile transpose
-vector<int> tile_transpose(const vector<int>& mat, int rows, int cols, int tile_D1, int tile_D2) {
-    vector<int> transposed(cols * rows);
-
-    for (int ii = 0; ii < rows; ii += tile_D1) {
-        for (int jj = 0; jj < cols; jj += tile_D2) {
-
-            for (int i = ii; i < ii+ tile_D1; i++) {
-                if (i >= rows) 
-                    continue;
-
-                for (int j = jj; j < jj + tile_D2; j++) {
-                    if (j >= cols) 
-                        continue;
-
-                    // element at (i,j) in original goes to (j,i) in transposed
-                    transposed[j * rows + i] = mat[i * cols + j];
-                }
-            }
-        }
-    }
-
-    return transposed;
-}
-
-
-// GPU tile transpose
-__global__ void gpu_tile_transpose(int *d_matrix_1, int *d_matrix_res, int rows, int cols, int tile_D1, int tile_D2) {
-
-    extern __shared__ int tile[];
-
-    unsigned int i = blockIdx.x*blockDim.x + threadIdx.x;
-    unsigned int j = blockIdx.y*blockDim.y + threadIdx.y;
-
-    if (i >= rows)
-        return;
-    if (j >= cols)
-        return;
-
-    tile[threadIdx.y*tile_D1 + threadIdx.x] = d_matrix_1[i*cols + j];
-    __syncthreads();
-
-    // d_matrix_res[j*rows + i] = d_matrix_1[i*cols + j];
-
-    unsigned int ti = blockIdx.y*blockDim.y + threadIdx.y;
-    unsigned int tj = blockIdx.x*blockDim.x + threadIdx.x;
-    if (ti >= cols)
-        return;
-    if (tj >= rows)
-        return;
-    
-    d_matrix_res[ti*rows + tj] = tile[threadIdx.y*tile_D1 + threadIdx.x];
-}
-
-
 int main(int argc, char *argv[]) {
 
-    if (argc != 4) {
+    if (argc != 3) {
         cout << "WRONG NUMBER OF ARGUMENTS!!" << endl;
         exit(0);
     }
-
-    int tile_m = atoi(argv[1]);
-    int tile_n = atoi(argv[2]);
-    string path_to_mat_a = argv[3];
-
-    // cout << argc << endl;
-    // cout << tile_m << " " << tile_n << endl;
+    unsigned int block_size = atoi(argv[1]);
+    string path_to_mat_a = argv[2];
 
     vector<int> matrix_1;
     int *d_matrix_1, *d_matrix_res;
@@ -171,6 +139,7 @@ int main(int argc, char *argv[]) {
     }
     // int * dimensions_1 = read_from_csv("./public_test_cases/matrix1.csv", matrix_1);
     int * dimensions_1 = read_from_csv(path_to_mat_a, matrix_1);
+
     int no_of_rows_of_matrix_1 = dimensions_1[0];
     int no_of_cols_of_matrix_1 = dimensions_1[1];
 
@@ -178,7 +147,7 @@ int main(int argc, char *argv[]) {
 
     if (c==0) {
         auto start = chrono::high_resolution_clock::now();
-        matrix_res = tile_transpose(matrix_1, no_of_rows_of_matrix_1, no_of_cols_of_matrix_1, tile_m, tile_n);
+        matrix_res = transpose(matrix_1, no_of_rows_of_matrix_1, no_of_cols_of_matrix_1);
         auto end = chrono::high_resolution_clock::now();
         chrono::duration<double, milli> duration = end - start;
         cout << "CPU function took " << duration.count()*1000 << " micro seconds\n";
@@ -191,21 +160,14 @@ int main(int argc, char *argv[]) {
         // transfering matcrix_1 to GPU
         cudaMemcpy(d_matrix_1, matrix_1.data(), no_of_rows_of_matrix_1*no_of_cols_of_matrix_1*sizeof(int), cudaMemcpyHostToDevice);
 
-        // setting launch config:
-        unsigned int no_of_blocks_x = ceil((1.0*no_of_rows_of_matrix_1) / tile_m);
-        unsigned int no_of_blocks_y = ceil((1.0*no_of_cols_of_matrix_1) / tile_n);
+        // unsigned no_of_bloks = no_of_rows_of_matrix_1/2;
+        // unsigned no_of_threads_per_blocks = no_of_cols_of_matrix_1*2;
 
-        unsigned int shared_memory_size = tile_m * tile_n * sizeof(int);
+        unsigned no_of_threads_per_blocks = block_size;
+        unsigned no_of_blocks = ceil((1.0 * no_of_rows_of_matrix_1 * no_of_cols_of_matrix_1)/no_of_threads_per_blocks);
+        cout << "no of blocks: " << no_of_blocks << endl;
 
-        cout << "no of blocks_x: " << no_of_blocks_x << endl;
-        cout << "no of blocks_y: " << no_of_blocks_y << endl;
-        cout << "shared mem size: " << shared_memory_size << endl;
-
-        // block & grid creation
-        dim3 block(tile_m, tile_n);
-        dim3 grid(no_of_blocks_x, no_of_blocks_y);
-
-        //timing
+        // timing
         // auto start = chrono::high_resolution_clock::now();
         cudaEvent_t start, stop;
         cudaEventCreate(&start);
@@ -213,8 +175,7 @@ int main(int argc, char *argv[]) {
         
         cudaEventRecord(start);
 
-        gpu_tile_transpose<<<grid, block, shared_memory_size>>>(d_matrix_1, d_matrix_res, no_of_rows_of_matrix_1, no_of_cols_of_matrix_1, tile_m, tile_n);
-
+        gpu_tanspose<<<no_of_blocks, no_of_threads_per_blocks>>>(d_matrix_1, d_matrix_res, no_of_rows_of_matrix_1, no_of_cols_of_matrix_1);
         cudaEventRecord(stop);
         cudaEventSynchronize(stop);
 
@@ -224,7 +185,6 @@ int main(int argc, char *argv[]) {
         printf("Kernel elapsed time: %.3f microseconds\n", ms * 1000);
 
         // cudaDeviceSynchronize();
-
         // auto end = chrono::high_resolution_clock::now();
         // chrono::duration<double, milli> duration = end-start;
 
@@ -233,7 +193,6 @@ int main(int argc, char *argv[]) {
         //transferring resultant matrix into host
         cudaMemcpy(matrix_res.data(), d_matrix_res, no_of_rows_of_matrix_1 * no_of_cols_of_matrix_1 * sizeof(int), cudaMemcpyDeviceToHost);
     }
-    // printing the op
     // for (size_t i = 0; i < no_of_cols_of_matrix_1; i++)
     // {
     //     for (size_t j = 0; j < no_of_rows_of_matrix_1; j++)
@@ -242,7 +201,8 @@ int main(int argc, char *argv[]) {
     //     }
     //     cout << endl;
     // }
-    write_matrix_to_csv("./results/result_4.csv", matrix_res, no_of_cols_of_matrix_1, no_of_rows_of_matrix_1);
+    // write_matrix_to_csv("./results/output_3_CS24MTECH12001.csv", matrix_res, no_of_cols_of_matrix_1, no_of_rows_of_matrix_1);
+    write_matrix_to_csv("./output_3_CS24MTECH12001.csv", matrix_res, no_of_cols_of_matrix_1, no_of_rows_of_matrix_1);
     
     return 0;
 }
