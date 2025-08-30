@@ -145,13 +145,14 @@ __global__ void gpu_tile_transpose(int *d_matrix_1, int *d_matrix_res, int rows,
 
 int main(int argc, char *argv[]) {
 
-    if (argc != 3) {
+    if (argc != 4) {
         cout << "WRONG NUMBER OF ARGUMENTS!!" << endl;
         exit(0);
     }
 
     int tile_m = atoi(argv[1]);
     int tile_n = atoi(argv[2]);
+    string path_to_mat_a = argv[3];
 
     // cout << argc << endl;
     // cout << tile_m << " " << tile_n << endl;
@@ -168,7 +169,8 @@ int main(int argc, char *argv[]) {
         cin >> c;
         // return 0;
     }
-    int * dimensions_1 = read_from_csv("./public_test_cases/matrix1.csv", matrix_1);
+    // int * dimensions_1 = read_from_csv("./public_test_cases/matrix1.csv", matrix_1);
+    int * dimensions_1 = read_from_csv(path_to_mat_a, matrix_1);
     int no_of_rows_of_matrix_1 = dimensions_1[0];
     int no_of_cols_of_matrix_1 = dimensions_1[1];
 
@@ -179,7 +181,7 @@ int main(int argc, char *argv[]) {
         matrix_res = tile_transpose(matrix_1, no_of_rows_of_matrix_1, no_of_cols_of_matrix_1, tile_m, tile_n);
         auto end = chrono::high_resolution_clock::now();
         chrono::duration<double, milli> duration = end - start;
-        cout << "CPU function took " << duration.count() << " ms\n";
+        cout << "CPU function took " << duration.count()*1000 << " micro seconds\n";
     }
     else if (c==1) {
         // memory allocation on GPU
@@ -204,15 +206,29 @@ int main(int argc, char *argv[]) {
         dim3 grid(no_of_blocks_x, no_of_blocks_y);
 
         //timing
-        auto start = chrono::high_resolution_clock::now();
+        // auto start = chrono::high_resolution_clock::now();
+        cudaEvent_t start, stop;
+        cudaEventCreate(&start);
+        cudaEventCreate(&stop);
+        
+        cudaEventRecord(start);
 
         gpu_tile_transpose<<<grid, block, shared_memory_size>>>(d_matrix_1, d_matrix_res, no_of_rows_of_matrix_1, no_of_cols_of_matrix_1, tile_m, tile_n);
-        cudaDeviceSynchronize();
 
-        auto end = chrono::high_resolution_clock::now();
-        chrono::duration<double, milli> duration = end-start;
+        cudaEventRecord(stop);
+        cudaEventSynchronize(stop);
 
-        cout << "GPU function took " << duration.count() << " ms\n";
+        float ms = 0.0f;
+        cudaEventElapsedTime(&ms, start, stop);
+
+        printf("Kernel elapsed time: %.3f microseconds\n", ms * 1000);
+
+        // cudaDeviceSynchronize();
+
+        // auto end = chrono::high_resolution_clock::now();
+        // chrono::duration<double, milli> duration = end-start;
+
+        // cout << "GPU function took " << duration.count() << " ms\n";
 
         //transferring resultant matrix into host
         cudaMemcpy(matrix_res.data(), d_matrix_res, no_of_rows_of_matrix_1 * no_of_cols_of_matrix_1 * sizeof(int), cudaMemcpyDeviceToHost);
@@ -226,7 +242,7 @@ int main(int argc, char *argv[]) {
     //     }
     //     cout << endl;
     // }
-    write_matrix_to_csv("./result.csv", matrix_res, no_of_cols_of_matrix_1, no_of_rows_of_matrix_1);
+    write_matrix_to_csv("./results/result_4.csv", matrix_res, no_of_cols_of_matrix_1, no_of_rows_of_matrix_1);
     
     return 0;
 }
