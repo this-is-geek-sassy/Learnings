@@ -216,7 +216,7 @@ int main(int argc, char *argv[]) {
         mat_mul(matrix_1, matrix_2, result, no_of_rows_of_matrix_1, no_of_cols_of_matrix_1, no_of_cols_of_matrix_2);
         auto end = chrono::high_resolution_clock::now();
         chrono::duration<double, milli> duration = end - start;
-        cout << "CPU function took " << duration.count() << " ms\n";
+        cout << "CPU function took " << duration.count()*1000 << " micro seconds\n";
     }
 
     // // printing
@@ -256,13 +256,27 @@ int main(int argc, char *argv[]) {
         unsigned int grid_size = ceil((1.0*no_of_rows_of_matrix_1*no_of_cols_of_matrix_2)/block_size);
 
         //timing
-        auto start = chrono::high_resolution_clock::now();
+        // auto start = chrono::high_resolution_clock::now();
+        
+        cudaEvent_t start, stop;
+        cudaEventCreate(&start);
+        cudaEventCreate(&stop);
+        
+        cudaEventRecord(start);
         gpu_mat_mul<<<grid_size, block_size>>> (d_matrix_1, d_matrix_2, d_matrix_result, no_of_rows_of_matrix_1, no_of_cols_of_matrix_1, no_of_cols_of_matrix_2);
-        cudaDeviceSynchronize();
-        auto end = chrono::high_resolution_clock::now();
-        chrono::duration<double, milli> duration = end-start;
+        cudaEventRecord(stop);
+        cudaEventSynchronize(stop);
 
-        cout << "GPU function took " << duration.count() << " ms\n";
+        float ms = 0.0f;
+        cudaEventElapsedTime(&ms, start, stop);
+
+        printf("Kernel elapsed time: %.3f microseconds\n", ms * 1000);
+
+        // cudaDeviceSynchronize();
+        // auto end = chrono::high_resolution_clock::now();
+        // chrono::duration<double, milli> duration = end-start;
+
+        // cout << "GPU function took " << duration.count() << " ms\n";
 
         // transferring resultant matrix into cpu
         cudaMemcpy(result.data(), d_matrix_result, no_of_rows_of_matrix_1 * no_of_cols_of_matrix_2 * sizeof(int), cudaMemcpyDeviceToHost);
