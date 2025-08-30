@@ -21,7 +21,7 @@ int *read_from_csv(const string& filename, vector<int>& data) {
             if (i==line.size() || line[i]==',') {
                 size_t start = cell.find_first_not_of(" \t\r\n");
                 size_t end   = cell.find_last_not_of(" \t\r\n");
-                if (start == std::string::npos) {
+                if (start == string::npos) {
                     cell = "";  // cell entirely made up of whitespaces or missing number
                 } else {
                     cell = cell.substr(start, end - start + 1);
@@ -206,7 +206,6 @@ int main(int argc, char *argv[]) {
         dim3 grid(no_of_blocks_x, no_of_blocks_y);
 
         //timing
-        // auto start = chrono::high_resolution_clock::now();
         cudaEvent_t start, stop;
         cudaEventCreate(&start);
         cudaEventCreate(&stop);
@@ -223,12 +222,14 @@ int main(int argc, char *argv[]) {
 
         printf("Kernel elapsed time: %.3f microseconds\n", ms * 1000);
 
-        // cudaDeviceSynchronize();
-
-        // auto end = chrono::high_resolution_clock::now();
-        // chrono::duration<double, milli> duration = end-start;
-
-        // cout << "GPU function took " << duration.count() << " ms\n";
+        // Store kernel time in output_4_CS24MTECH12001.txt
+        ofstream timefile("./public_test_cases/output_4_CS24MTECH12001.txt");
+        if (timefile.is_open()) {
+            timefile << ms * 1000 << endl;
+            timefile.close();
+        } else {
+            cerr << "Error: Could not open output_4_CS24MTECH12001.txt for writing kernel time." << endl;
+        }
 
         //transferring resultant matrix into host
         cudaMemcpy(matrix_res.data(), d_matrix_res, no_of_rows_of_matrix_1 * no_of_cols_of_matrix_1 * sizeof(int), cudaMemcpyDeviceToHost);
@@ -243,7 +244,7 @@ int main(int argc, char *argv[]) {
     //     cout << endl;
     // }
     // write_matrix_to_csv("./results/output_4_CS24MTECH12001.csv", matrix_res, no_of_cols_of_matrix_1, no_of_rows_of_matrix_1);
-    write_matrix_to_csv("./output_4_CS24MTECH12001.csv", matrix_res, no_of_cols_of_matrix_1, no_of_rows_of_matrix_1);
+    write_matrix_to_csv("./public_test_cases/output_4_CS24MTECH12001.csv", matrix_res, no_of_cols_of_matrix_1, no_of_rows_of_matrix_1);
     
     return 0;
 }

@@ -21,7 +21,7 @@ int *read_from_csv(const string& filename, vector<int>& data) {
             if (i==line.size() || line[i]==',') {
                 size_t start = cell.find_first_not_of(" \t\r\n");
                 size_t end   = cell.find_last_not_of(" \t\r\n");
-                if (start == std::string::npos) {
+                if (start == string::npos) {
                     cell = "";  // cell entirely made up of whitespaces or missing number
                 } else {
                     cell = cell.substr(start, end - start + 1);
@@ -183,6 +183,14 @@ int main(int argc, char *argv[]) {
         cudaEventElapsedTime(&ms, start, stop);
 
         printf("Kernel elapsed time: %.3f microseconds\n", ms * 1000);
+        // Write kernel time to output file
+        ofstream timefile("./public_test_cases/output_3_CS24MTECH12001.txt");
+        if (timefile.is_open()) {
+            timefile << "Kernel elapsed time: " << fixed << setprecision(3) << (ms * 1000) << " microseconds\n";
+            timefile.close();
+        } else {
+            cerr << "Could not open output_3_CS24MTECH12001.txt for writing kernel time!\n";
+        }
 
         // cudaDeviceSynchronize();
         // auto end = chrono::high_resolution_clock::now();
@@ -202,7 +210,7 @@ int main(int argc, char *argv[]) {
     //     cout << endl;
     // }
     // write_matrix_to_csv("./results/output_3_CS24MTECH12001.csv", matrix_res, no_of_cols_of_matrix_1, no_of_rows_of_matrix_1);
-    write_matrix_to_csv("./output_3_CS24MTECH12001.csv", matrix_res, no_of_cols_of_matrix_1, no_of_rows_of_matrix_1);
+    write_matrix_to_csv("./public_test_cases/output_3_CS24MTECH12001.csv", matrix_res, no_of_cols_of_matrix_1, no_of_rows_of_matrix_1);
     
     return 0;
 }

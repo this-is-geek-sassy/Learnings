@@ -20,7 +20,7 @@ int *read_from_csv(const string& filename, vector<int>& data) {
             if (i==line.size() || line[i]==',') {
                 size_t start = cell.find_first_not_of(" \t\r\n");
                 size_t end   = cell.find_last_not_of(" \t\r\n");
-                if (start == std::string::npos) {
+                if (start == string::npos) {
                     cell = "";  // cell entirely made up of whitespaces or missing number
                 } else {
                     cell = cell.substr(start, end - start + 1);
@@ -312,16 +312,13 @@ int main(int argc, char *argv[]) {
         cudaMemcpy(d_matrix_2, matrix_2.data(), no_of_rows_of_matrix_2*no_of_cols_of_matrix_2*sizeof(int), cudaMemcpyHostToDevice);
 
         // setting launch config: 
-        //unsigned int block_size : already available
         unsigned int grid_size = ceil((1.0*no_of_rows_of_matrix_1*no_of_cols_of_matrix_2)/block_size);
 
         //timing
-        // auto start = chrono::high_resolution_clock::now();
-        
         cudaEvent_t start, stop;
         cudaEventCreate(&start);
         cudaEventCreate(&stop);
-        
+
         cudaEventRecord(start);
         gpu_mat_mul<<<grid_size, block_size>>> (d_matrix_1, d_matrix_2, d_matrix_result, no_of_rows_of_matrix_1, no_of_cols_of_matrix_1, no_of_cols_of_matrix_2);
         cudaEventRecord(stop);
@@ -332,11 +329,14 @@ int main(int argc, char *argv[]) {
 
         printf("Kernel elapsed time: %.3f microseconds\n", ms * 1000);
 
-        // cudaDeviceSynchronize();
-        // auto end = chrono::high_resolution_clock::now();
-        // chrono::duration<double, milli> duration = end-start;
-
-        // cout << "GPU function took " << duration.count() << " ms\n";
+        // Write kernel time to output file
+        ofstream timefile("./public_test_cases/output_1_1_CS24MTECH12001.txt");
+        if (timefile.is_open()) {
+            timefile << "Kernel elapsed time: " << fixed << setprecision(3) << (ms * 1000) << " microseconds\n";
+            timefile.close();
+        } else {
+            cerr << "Could not open output_1_1_CS24MTECH12001.txt for writing kernel time!\n";
+        }
 
         // transferring resultant matrix into cpu
         cudaMemcpy(result.data(), d_matrix_result, no_of_rows_of_matrix_1 * no_of_cols_of_matrix_2 * sizeof(int), cudaMemcpyDeviceToHost);
