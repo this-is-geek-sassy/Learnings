@@ -1,5 +1,6 @@
 #!/bin/bash
 
+mkdir target/results
 # Build all CUDA programs in this directory
 echo "Compiling all CUDA programs..."
 
