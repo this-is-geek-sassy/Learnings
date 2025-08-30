@@ -1,1 +1,1 @@
-Kernel elapsed time: 151212.391 microseconds
+Kernel elapsed time: 44033576.000 microseconds

@@ -1,0 +1,6 @@
+Tile Size M, Tile Size N, Kernel Time (microseconds)
+4, 4, 623.264
+8, 8, 318.880
+16, 16, 258.496
+32, 32, 377.472
+8, 16, 235.520
