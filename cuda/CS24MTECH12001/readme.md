@@ -64,10 +64,10 @@ All CUDA programs expect command line arguments as follows:
 ### main_2.cu
 **Usage:**
 ```
-./main_2 <tile_m> <tile_n> <path_to_matrix_a> <path_to_matrix_b>
+./main_2 <tile_m> <path_to_matrix_a> <path_to_matrix_b>
 ```
 - `<tile_m>`: Tile size for rows (integer).
-- `<tile_n>`: Tile size for columns (integer).
+- `<tile_n>`: Tile size for columns (This is an internal variable, kept equal to `tile_m`) (integer).
 - `<path_to_matrix_a>`: Path to first input matrix CSV file.
 - `<path_to_matrix_b>`: Path to second input matrix CSV file.
 
