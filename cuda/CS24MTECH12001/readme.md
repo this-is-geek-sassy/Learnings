@@ -79,3 +79,7 @@ All CUDA programs expect command line arguments as follows:
 - All programs prompt for CPU/GPU selection at runtime.
 - Input matrices must be in CSV format.
 - See `checker.py` for output validation requirements.
+- All programs should be run from the current directory, for example: 
+    ```
+    ./target/main_4 50 50 ./public_test_cases/matrix1.csv
+    ```
