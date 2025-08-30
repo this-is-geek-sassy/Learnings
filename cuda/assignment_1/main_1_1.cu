@@ -142,13 +142,16 @@ void write_matrix_to_csv(const string& filename, const vector<int>& mat, int row
 
 int main(int argc, char *argv[]) {
 
-    if (argc != 2) {
+    if (argc != 4) {
         cout << "WRONG NUMBER OF ARGUMENTS!!" << endl;
         exit(0);
     }
     // user only give blocksize, i.e., how many threads should be there per block
     // we will calculae grid_size based on that
     unsigned int block_size = atoi(argv[1]);
+    string path_to_mat_a = argv[2];
+    string path_to_mat_b = argv[3];
+
     // int no_of_rows = 5;
     // int no_of_cols = 5;
     // vector<int> matrix_1(no_of_rows*no_of_cols), matrix_2(no_of_rows*no_of_cols);
@@ -181,8 +184,10 @@ int main(int argc, char *argv[]) {
     //     // matrix_1.push_back(v);
     //     // matrix_2.push_back(v);
     // }
-    int * dimensions_1 = read_from_csv("./public_test_cases/matrix1.csv", matrix_1);
-    int *dimensions_2 = read_from_csv("./public_test_cases/matrix2.csv", matrix_2);
+    // int * dimensions_1 = read_from_csv("./public_test_cases/matrix1.csv", matrix_1);
+    // int *dimensions_2 = read_from_csv("./public_test_cases/matrix2.csv", matrix_2);
+    int * dimensions_1 = read_from_csv(path_to_mat_a, matrix_1);
+    int *dimensions_2 = read_from_csv(path_to_mat_b, matrix_2);
     
     int no_of_rows_of_matrix_1 = dimensions_1[0];
     int no_of_cols_of_matrix_1 = dimensions_1[1];
@@ -273,7 +278,7 @@ int main(int argc, char *argv[]) {
         }
         cout << endl;
     }
-    write_matrix_to_csv("./result.csv", result, no_of_rows_of_matrix_1, no_of_cols_of_matrix_2);
+    write_matrix_to_csv("./result_1_1.csv", result, no_of_rows_of_matrix_1, no_of_cols_of_matrix_2);
     
     return 0;
 }
