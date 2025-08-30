@@ -255,9 +255,69 @@ int main(int argc, char *argv[]) {
     // matrix_2 = transpose(matrix_2, no_of_rows_of_matrix_2, no_of_cols_of_matrix_2);
     // /// END
 
-    if (no_of_cols_of_matrix_1 != no_of_rows_of_matrix_2) {
-        cout << "DIMENSION MISMATCH, CANNOT PROCEED!!" << endl;
-        return -1;
+    bool dims_match = (no_of_cols_of_matrix_1 == no_of_rows_of_matrix_2);
+    bool can_transpose_1 = (no_of_rows_of_matrix_1 == no_of_rows_of_matrix_2);
+    bool can_transpose_2 = (no_of_cols_of_matrix_1 == no_of_cols_of_matrix_2);
+
+    if (!dims_match) {
+        if (!can_transpose_1 && !can_transpose_2) {
+            cout << "DIMENSION MISMATCH, CANNOT PROCEED!!" << endl;
+            return -1;
+        }
+
+        // Calculate scalar multiplications for both options
+        long long cost1 = LLONG_MAX, cost2 = LLONG_MAX;
+        if (can_transpose_1) {
+            // If we transpose matrix 1
+            cost1 = (long long)no_of_cols_of_matrix_1 * no_of_rows_of_matrix_2 * no_of_cols_of_matrix_2;
+        }
+        if (can_transpose_2) {
+            // If we transpose matrix 2
+            cost2 = (long long)no_of_rows_of_matrix_1 * no_of_cols_of_matrix_1 * no_of_rows_of_matrix_2;
+        }
+
+        cout << "Dimension mismatch! But multiplication is possible if one matrix is transposed." << endl;
+        if (can_transpose_1 && can_transpose_2) {
+            cout << "Transpose matrix 1 (A) or matrix 2 (B)?" << endl;
+            cout << "1: Transpose A (cost: " << cost1 << ")" << endl;
+            cout << "2: Transpose B (cost: " << cost2 << ")" << endl;
+            cout << "0: Abort" << endl;
+            int choice = 0;
+            do {
+                cout << "Enter your choice: ";
+                cin >> choice;
+            } while (choice != 0 && choice != 1 && choice != 2);
+            if (choice == 0) return -1;
+            if ((choice == 1 && cost1 <= cost2) || (choice == 2 && cost2 < cost1)) {
+                if (choice == 1) {
+                    matrix_1 = transpose(matrix_1, no_of_rows_of_matrix_1, no_of_cols_of_matrix_1);
+                    swap(no_of_rows_of_matrix_1, no_of_cols_of_matrix_1);
+                } else {
+                    matrix_2 = transpose(matrix_2, no_of_rows_of_matrix_2, no_of_cols_of_matrix_2);
+                    swap(no_of_rows_of_matrix_2, no_of_cols_of_matrix_2);
+                }
+            }
+        } else if (can_transpose_1) {
+            cout << "Transpose matrix 1 (A) to proceed? (y/n): ";
+            char ans; cin >> ans;
+            if (ans == 'y' || ans == 'Y') {
+                matrix_1 = transpose(matrix_1, no_of_rows_of_matrix_1, no_of_cols_of_matrix_1);
+                swap(no_of_rows_of_matrix_1, no_of_cols_of_matrix_1);
+            } else {
+                cout << "Aborted by user." << endl;
+                return -1;
+            }
+        } else if (can_transpose_2) {
+            cout << "Transpose matrix 2 (B) to proceed? (y/n): ";
+            char ans; cin >> ans;
+            if (ans == 'y' || ans == 'Y') {
+                matrix_2 = transpose(matrix_2, no_of_rows_of_matrix_2, no_of_cols_of_matrix_2);
+                swap(no_of_rows_of_matrix_2, no_of_cols_of_matrix_2);
+            } else {
+                cout << "Aborted by user." << endl;
+                return -1;
+            }
+        }
     }
 
     vector<int> result(no_of_rows_of_matrix_1 * no_of_cols_of_matrix_2);
@@ -336,7 +396,7 @@ int main(int argc, char *argv[]) {
     //     }
     //     cout << endl;
     // }
-    write_matrix_to_csv("./result_2.csv", result, no_of_rows_of_matrix_1, no_of_cols_of_matrix_2);
+    write_matrix_to_csv("./results/result_2.csv", result, no_of_rows_of_matrix_1, no_of_cols_of_matrix_2);
     
     return 0;
 }
