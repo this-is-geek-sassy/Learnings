@@ -86,17 +86,21 @@ __global__ void gpu_mat_mul(int *d_matrix_1, int *d_matrix_2, int *d_matrix_res,
 
     unsigned int id = blockIdx.x*blockDim.x + threadIdx.x;
 
+    if (id >= (m*k))
+        return;
+
     // cout << blockIdx.x << " " << threadIdx.x << endl;
     // printf("%d %d\n", blockIdx.x, threadIdx.x);
 
-    unsigned int i = blockIdx.x;
-    unsigned j = threadIdx.x;
+    unsigned int i = id / k;
+    unsigned j = id % k;
 
+    int sum = 0;
     for (size_t l = 0; l < n; l++)
     {
-        d_matrix_res[id] += (d_matrix_1[i*n + l] * d_matrix_2[l*k + j]);
+        sum += (d_matrix_1[i*n + l] * d_matrix_2[l*k + j]);
     }
-    
+    d_matrix_res[id] = sum;
 }
 
 /// TESTING WITH TRANSPOSE
@@ -136,7 +140,15 @@ void write_matrix_to_csv(const string& filename, const vector<int>& mat, int row
     file.close();
 }
 
-int main() {
+int main(int argc, char *argv[]) {
+
+    if (argc != 2) {
+        cout << "WRONG NUMBER OF ARGUMENTS!!" << endl;
+        exit(0);
+    }
+    // user only give blocksize, i.e., how many threads should be there per block
+    // we will calculae grid_size based on that
+    unsigned int block_size = atoi(argv[1]);
     // int no_of_rows = 5;
     // int no_of_cols = 5;
     // vector<int> matrix_1(no_of_rows*no_of_cols), matrix_2(no_of_rows*no_of_cols);
@@ -169,22 +181,22 @@ int main() {
     //     // matrix_1.push_back(v);
     //     // matrix_2.push_back(v);
     // }
-    int * dimensions_1 = read_from_csv("./public_test_cases/matrix_a.csv", matrix_1);
-    int *dimensions_2 = read_from_csv("./public_test_cases/matrix_b.csv", matrix_2);
+    int * dimensions_1 = read_from_csv("./public_test_cases/matrix1.csv", matrix_1);
+    int *dimensions_2 = read_from_csv("./public_test_cases/matrix2.csv", matrix_2);
     
     int no_of_rows_of_matrix_1 = dimensions_1[0];
     int no_of_cols_of_matrix_1 = dimensions_1[1];
 
-    // int no_of_rows_of_matrix_2 = dimensions_2[0];
-    // int no_of_cols_of_matrix_2 = dimensions_2[1];
+    int no_of_rows_of_matrix_2 = dimensions_2[0];
+    int no_of_cols_of_matrix_2 = dimensions_2[1];
 
-    /// TESTING WITH TRANSPOSE
-    /// BEGIN
-    int no_of_rows_of_matrix_2 = dimensions_2[1];
-    int no_of_cols_of_matrix_2 = dimensions_2[0];
+    // /// TESTING WITH TRANSPOSE
+    // /// BEGIN
+    // int no_of_rows_of_matrix_2 = dimensions_2[1];
+    // int no_of_cols_of_matrix_2 = dimensions_2[0];
 
-    matrix_2 = transpose(matrix_2, no_of_rows_of_matrix_2, no_of_cols_of_matrix_2);
-    /// END
+    // matrix_2 = transpose(matrix_2, no_of_rows_of_matrix_2, no_of_cols_of_matrix_2);
+    // /// END
 
     if (no_of_cols_of_matrix_1 != no_of_rows_of_matrix_2) {
         cout << "DIMENSION MISMATCH, CANNOT PROCEED!!" << endl;
@@ -234,9 +246,13 @@ int main() {
         cudaMemcpy(d_matrix_1, matrix_1.data(), no_of_rows_of_matrix_1*no_of_cols_of_matrix_1*sizeof(int), cudaMemcpyHostToDevice);
         cudaMemcpy(d_matrix_2, matrix_2.data(), no_of_rows_of_matrix_2*no_of_cols_of_matrix_2*sizeof(int), cudaMemcpyHostToDevice);
 
+        // setting launch config: 
+        //unsigned int block_size : already available
+        unsigned int grid_size = ceil((1.0*no_of_rows_of_matrix_1*no_of_cols_of_matrix_2)/block_size);
+
         //timing
         auto start = chrono::high_resolution_clock::now();
-        gpu_mat_mul<<<no_of_rows_of_matrix_1,no_of_cols_of_matrix_2>>> (d_matrix_1, d_matrix_2, d_matrix_result, no_of_rows_of_matrix_1, no_of_cols_of_matrix_1, no_of_cols_of_matrix_2);
+        gpu_mat_mul<<<grid_size, block_size>>> (d_matrix_1, d_matrix_2, d_matrix_result, no_of_rows_of_matrix_1, no_of_cols_of_matrix_1, no_of_cols_of_matrix_2);
         cudaDeviceSynchronize();
         auto end = chrono::high_resolution_clock::now();
         chrono::duration<double, milli> duration = end-start;
