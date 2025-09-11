@@ -189,10 +189,10 @@ void write_matrix_to_csv(const string& filename, const vector<unsigned int>& mat
 
     int jmp = 0;
     for (size_t i = 0; i < no_of_real_elements + no_of_rows_of_matrix; i += (jmp+1)) {
-
         jmp = mat[i];
         for (size_t j = i+1; j<=i+jmp; j++) {
-            file << mat[j] << ",";
+            file << mat[j];
+            if (j < i + jmp) file << ",";
         }
         file << "\n";
     }
@@ -282,16 +282,16 @@ int main(int argc, char *argv[]) {
             }
         }
         cout << "+++++++++++++++++++" << endl;
-        // PREETY Printing:
-        jmp = 0;
-        for (size_t i = 0; i < no_of_real_elements + no_of_rows_of_matrix; i += (jmp+1))
-        {
-            jmp = matrix_alike[i];
-            for (size_t j = i+1; j <= i+jmp; j++) {
-                cout << matrix_alike[j] << " ";
-            }
-            cout << endl;
-        }
+        // // PREETY Printing:
+        // jmp = 0;
+        // for (size_t i = 0; i < no_of_real_elements + no_of_rows_of_matrix; i += (jmp+1))
+        // {
+        //     jmp = matrix_alike[i];
+        //     for (size_t j = i+1; j <= i+jmp; j++) {
+        //         cout << matrix_alike[j] << " ";
+        //     }
+        //     cout << endl;
+        // }
 
         // Write output to out file:
         write_matrix_to_csv(name_of_op_file, matrix_alike, no_of_real_elements, no_of_rows_of_matrix);
@@ -341,17 +341,17 @@ int main(int argc, char *argv[]) {
         vector<unsigned int> sorted_host(matrix_alike.size());
         cudaMemcpy(sorted_host.data(), d_sorted_matrix, matrix_alike.size() * sizeof(unsigned int), cudaMemcpyDeviceToHost);
 
-        // PRETTY PRINTING
         cout << "============================" << endl;
-        jmp = 0;
-        for (size_t i = 0; i < no_of_real_elements + no_of_rows_of_matrix; i += (jmp+1))
-        {
-            jmp = sorted_host[i];
-            for (size_t j = i+1; j <= i+jmp; j++) {
-                cout << sorted_host[j] << " ";
-            }
-            cout << endl;
-        }
+        // // PRETTY PRINTING
+        // jmp = 0;
+        // for (size_t i = 0; i < no_of_real_elements + no_of_rows_of_matrix; i += (jmp+1))
+        // {
+        //     jmp = sorted_host[i];
+        //     for (size_t j = i+1; j <= i+jmp; j++) {
+        //         cout << sorted_host[j] << " ";
+        //     }
+        //     cout << endl;
+        // }
 
         // Write output to out file:
         write_matrix_to_csv(name_of_op_file, sorted_host, no_of_real_elements, no_of_rows_of_matrix);
