@@ -178,6 +178,37 @@ __global__ void gpu_counting_sort(unsigned int *matrix_alike, int *row_offsets, 
     }
 }
 
+void write_matrix_to_csv(const string& filename, const vector<unsigned int>& mat, int no_of_real_elements, int no_of_rows_of_matrix) {
+
+    ofstream file(filename);
+
+    if (!file.is_open()) {
+        cerr << "Error: Could not open file " << filename << "\n";
+        return;
+    }
+
+    int jmp = 0;
+    for (size_t i = 0; i < no_of_real_elements + no_of_rows_of_matrix; i += (jmp+1)) {
+
+        jmp = mat[i];
+        for (size_t j = i+1; j<=i+jmp; j++) {
+            file << mat[j] << ",";
+        }
+        file << "\n";
+    }
+
+    // for (int i = 0; i < rows; i++) {
+    //     for (int j = 0; j < cols; j++) {
+    //         file << mat[i * cols + j];
+    //         if (j < cols - 1) 
+    //             file << ",";  // add comma except last element
+    //     }
+    //     file << "\n";
+    // }
+
+    file.close();
+}
+
 
 int main(int argc, char *argv[]) {
 
@@ -261,6 +292,9 @@ int main(int argc, char *argv[]) {
             }
             cout << endl;
         }
+
+        // Write output to out file:
+        write_matrix_to_csv(name_of_op_file, matrix_alike, no_of_real_elements, no_of_rows_of_matrix);
     }
     else if (c==1) {
         // finding max value in the whole matrix:
@@ -291,7 +325,7 @@ int main(int argc, char *argv[]) {
         cudaMemcpy(d_sorted_matrix, d_matrix_alike, matrix_alike.size() * sizeof(unsigned int), cudaMemcpyDeviceToDevice);
 
         // Kernel Launch config:
-        int threads_per_block = 256;
+        // int threads_per_block = 256;
         size_t shared_mem_size = (max_muller + 1) * sizeof(unsigned int);
 
         gpu_counting_sort<<<no_of_rows_of_matrix, 256, shared_mem_size>>>(
@@ -318,6 +352,9 @@ int main(int argc, char *argv[]) {
             }
             cout << endl;
         }
+
+        // Write output to out file:
+        write_matrix_to_csv(name_of_op_file, sorted_host, no_of_real_elements, no_of_rows_of_matrix);
     }
     
     // memory freeing:
@@ -325,5 +362,6 @@ int main(int argc, char *argv[]) {
     cudaFree(d_matrix_alike);
     cudaFree(d_row_offsets);
     cudaFree(d_row_sizes);
+    cudaFree(d_sorted_matrix);
     return 0;
 }
