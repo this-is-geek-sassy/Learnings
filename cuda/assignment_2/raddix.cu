@@ -77,7 +77,7 @@ int *read_from_csv(const string& filename, vector<unsigned int>& data) {
     return dimensions;
 }
 
-vector<unsigned int> counting_sort(vector<unsigned int> &v_1) {
+vector<unsigned int> cpu_counting_sort(vector<unsigned int> &v_1) {
 
     vector<unsigned int> v_2, v_c;
     v_2.resize(v_1.size());
@@ -112,7 +112,7 @@ vector<unsigned int> counting_sort(vector<unsigned int> &v_1) {
     // last loop which needs to be in-place
     for (int j = v_1.size()-1; j >= 0; j--)
     {
-        v_2[v_c[v_1[j]]] = v_1[j];
+        v_2[v_c[v_1[j]] - 1] = v_1[j];
         v_c[v_1[j]]--;
     }
     // cout << "step 5 done" << endl;
@@ -165,16 +165,42 @@ int main(int argc, char *argv[]) {
         cout << endl;
     }
     
-
+    vector<unsigned int> sorted;
     // CPU sorting call
-    vector<unsigned int> sorted = counting_sort(matrix_alike);
+    if (c==0) {
+        // sorted = counting_sort(matrix_alike);
+
+        jmp = 0;
+        for (int i=0; i<no_of_real_elements+no_of_rows_of_matrix; i+=(jmp+1)) {
+            jmp = matrix_alike[i];
+            vector<unsigned int> inter;
+            for (size_t j = i+1; j <= i+jmp; j++) {
+                inter.push_back(matrix_alike[j]);
+            }
+            sorted = cpu_counting_sort(inter);
+
+            int off = 0;
+            for (size_t j = i+1; j <= i+jmp; j++) {
+                matrix_alike[j] = sorted[off];
+                off++;
+            }
+        }
+    }
 
     cout << "+++++++++++++++++++" << endl;
-    // NORMAL PRINTING
-    for (int i=0; i<sorted.size(); i++) {
-        cout << sorted.at(i) << " ";
+    // PREETY Printing:
+    jmp = 0;
+    for (size_t i = 0; i < no_of_real_elements + no_of_rows_of_matrix; i += (jmp+1))
+    {
+        jmp = matrix_alike[i];
+        for (size_t j = i+1; j <= i+jmp; j++) {
+            cout << matrix_alike[j] << " ";
+        }
+        cout << endl;
     }
-    cout << endl;
 
+
+    // memory freeing:
+    free(dimensions_1);
     return 0;
 }
