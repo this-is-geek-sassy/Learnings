@@ -66,3 +66,12 @@ int *read_from_csv(const string& filename, vector<int>& data) {
     dimensions[1] = number_of_cols;
     return dimensions;
 }
+
+
+
+
+
+// cudaError_t err = cudaGetLastError();
+//         if (err != cudaSuccess) {
+//             printf("CUDA error: %s\n", cudaGetErrorString(err));
+//         }
