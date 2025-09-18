@@ -149,6 +149,75 @@ __global__ void gpu_counting_sort(unsigned int *matrix_alike, int *row_offsets, 
     }
 }
 
+// alt kernel
+__global__ void alt_gpu_counting_sort(unsigned int *matrix_alike, int *row_offsets, int *row_sizes,
+                                  unsigned int *sorted_matrix, unsigned int max_value, int total_flat_size) {
+
+
+    int row_idx = blockIdx.x;
+    int row_start = row_offsets[row_idx];
+    int row_size = row_sizes[row_idx];
+    unsigned int indiv_elem = row_start + threadIdx.x;
+
+    // if (threadIdx.x == 0 && blockIdx.x == 0) {
+    //     printf("DEBUG KERNEL LAUNCHED total_flat_size=%d max_value=%u row_start=%d row_size=%d\n",
+    //         total_flat_size, max_value, row_start, row_size);
+    // }
+    // __syncthreads();
+
+    extern __shared__ unsigned int shared_mem[];
+    unsigned int *count = shared_mem;
+    // count array initialization
+    count[threadIdx.x] = 0;
+    __syncthreads();
+
+    // trying to count frequancies
+    if (threadIdx.x < row_size) {
+        unsigned int indiv_elem = row_start + 1 + threadIdx.x; // +1 to skip row size
+        atomicAdd(&count[matrix_alike[indiv_elem]], 1);
+    }
+
+    // trying prefix sum now
+    // Serial prefix sum (more reliable for counting sort)
+    if (threadIdx.x == 0) {
+        // Convert counts to cumulative counts
+        for (int i = 1; i <= max_value; i++) {
+            count[i] += count[i-1];
+        }
+        
+        // Convert to exclusive prefix sum (shift right)
+        for (int i = max_value; i > 0; i--) {
+            count[i] = count[i-1];
+        }
+        count[0] = 0;
+    }
+    __syncthreads();
+
+    //DEBUG
+    // printf("HELLO!\n");
+    // if (row_idx == 0 && threadIdx.x == 0) {
+    //     printf("HELLO!\n");
+    //     for (int i=0; i<256; i++) {
+    //         printf("%d ", count[i]);
+    //     }
+    //     printf("\n");
+    // }
+
+    // trying to place stored value now
+    if (threadIdx.x < row_size) {
+        unsigned int data_idx = row_start + 1 + threadIdx.x; // +1 to skip row size
+        unsigned int value = matrix_alike[data_idx];
+        
+        // Get position and increment for next element with same value
+        int pos = atomicAdd(&count[value], 1); // atomicAdd, not atomicSub!
+        sorted_matrix[row_start + 1 + pos] = value;
+    }
+    
+    // Copy the row size to output
+    if (threadIdx.x == 0) {
+        sorted_matrix[row_start] = matrix_alike[row_start];
+    }
+}
 
 void write_matrix_to_csv(const string& filename, const vector<unsigned int>& mat, int no_of_real_elements, int no_of_rows_of_matrix) {
 
@@ -284,20 +353,20 @@ int main(int argc, char *argv[]) {
             offset += 1 + row_size;                   // Move to the next row
         }
 
-        // printing row_offsets & row_sizes
-        cout << "row_offsets" << endl;
-        for (size_t i = 0; i < row_offsets.size(); i++)
-        {
-            cout << row_offsets[i] << " ";
-        }
-        cout << endl;
-        cout << "row_sizes" << endl;
-        for (size_t i = 0; i < row_sizes.size(); i++)
-        {
-            cout << row_sizes[i] << " ";
-        }
-        cout << endl;
-        cout << "entire size: " << matrix_alike.size() << endl;
+        // // printing row_offsets & row_sizes
+        // cout << "row_offsets" << endl;
+        // for (size_t i = 0; i < row_offsets.size(); i++)
+        // {
+        //     cout << row_offsets[i] << " ";
+        // }
+        // cout << endl;
+        // cout << "row_sizes" << endl;
+        // for (size_t i = 0; i < row_sizes.size(); i++)
+        // {
+        //     cout << row_sizes[i] << " ";
+        // }
+        // cout << endl;
+        // cout << "entire size: " << matrix_alike.size() << endl;
 
         // Memory allocation & transfer:
         cudaMalloc(&d_matrix_alike, matrix_alike.size() * sizeof(unsigned int));
@@ -314,11 +383,30 @@ int main(int argc, char *argv[]) {
         // int threads_per_block = 256;
         size_t shared_mem_size = (max_muller + 1) * sizeof(unsigned int);
 
-        gpu_counting_sort<<<no_of_rows_of_matrix, 256, shared_mem_size>>>(
-            d_matrix_alike, d_row_offsets, d_row_sizes, d_sorted_matrix, max_muller, matrix_alike.size());
-        cudaDeviceSynchronize();
+        //timing
+        cudaEvent_t start, stop;
+        cudaEventCreate(&start);
+        cudaEventCreate(&stop);
+        cudaEventRecord(start);
 
-        
+        alt_gpu_counting_sort<<<no_of_rows_of_matrix, 256, 256*sizeof(int)>>>(
+            d_matrix_alike, d_row_offsets, d_row_sizes, d_sorted_matrix, max_muller, matrix_alike.size());
+        cudaError_t err = cudaGetLastError();
+        if (err != cudaSuccess) {
+            fprintf(stderr, "Launch error: %s\n", cudaGetErrorString(err));
+        }
+        err = cudaDeviceSynchronize();
+        if (err != cudaSuccess) {
+            fprintf(stderr, "Sync error (kernel died): %s\n", cudaGetErrorString(err));
+        }
+        // closing the timing counter
+        cudaEventRecord(stop);
+        cudaEventSynchronize(stop);
+
+        float ms = 0.0f;
+        cudaEventElapsedTime(&ms, start, stop);
+
+        printf("Kernel elapsed time: %.3f microseconds\n", ms * 1000);
 
         // Copying results back to host:
         vector<unsigned int> sorted_host(matrix_alike.size());
