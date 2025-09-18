@@ -5,64 +5,32 @@ using namespace std;
 
 int *read_from_csv(const string& filename, vector<unsigned int>& data) {
     ifstream file(filename);
-    long long int no_of_elements = 0;
+    int number_of_rows = 0;
     long long int total_no_of_elements = 0;
 
     string line;
-    int number_of_rows = 0;
-
     while (getline(file, line))
     {
-        total_no_of_elements += no_of_elements;
-        no_of_elements = 0;
-        
-        // First, count how many elements are in this line
-        string temp_line = line;
+        number_of_rows++;
+
         string temp_cell;
-        for (size_t i = 0; i <= temp_line.size(); i++)
-        {
-            if (i == temp_line.size() || temp_line[i] == ',') {
-                size_t start = temp_cell.find_first_not_of(" \t\r\n");
-                size_t end   = temp_cell.find_last_not_of(" \t\r\n");
-                if (start != string::npos) {
-                    no_of_elements++;
-                }
-                temp_cell = "";
-            } else {
-                temp_cell += temp_line[i];
-            }
-        }
-        
-        // Add the count at the beginning of this row
-        data.push_back(no_of_elements);
-        
-        // Now process the actual data
-        string cell;
         for (size_t i = 0; i <= line.size(); i++)
         {
             if (i == line.size() || line[i] == ',') {
-                
-                size_t start = cell.find_first_not_of(" \t\r\n");
-                size_t end   = cell.find_last_not_of(" \t\r\n");
-                if (start == string::npos) {
-                    cell = "";  // cell entirely made up of whitespaces or missing number
-                } else {
-                    cell = cell.substr(start, end - start + 1);
-                }
-
-                // Convert to int and add to flattened data
-                if (!cell.empty()) {
-                    int value = atoi(cell.c_str());
+                size_t start = temp_cell.find_first_not_of(" \t\r\n");
+                size_t end   = temp_cell.find_last_not_of(" \t\r\n");
+                if (start != string::npos) {
+                    temp_cell = temp_cell.substr(start, end - start + 1);
+                    int value = atoi(temp_cell.c_str());
                     data.push_back(value);
+                    total_no_of_elements++;
                 }
-                cell = "";
+                temp_cell = "";
             } else {
-                cell += line[i];
+                temp_cell += line[i];
             }
         }
-        number_of_rows++;
     }
-    total_no_of_elements += no_of_elements;
     file.close();
 
     // Error check
@@ -70,10 +38,9 @@ int *read_from_csv(const string& filename, vector<unsigned int>& data) {
         cout << "Error: No valid data in file: " << filename << endl;
     }
 
-    // Return dimensions
     int *dimensions = (int *)malloc(2 * sizeof(int));
     dimensions[0] = number_of_rows;
-    dimensions[1] = total_no_of_elements; // Not needed as per your requirement
+    dimensions[1] = total_no_of_elements;
     return dimensions;
 }
 
@@ -138,8 +105,12 @@ __global__ void gpu_counting_sort(unsigned int *matrix_alike, int *row_offsets, 
     int row_start = row_offsets[row_idx];
     int row_size = row_sizes[row_idx];
 
-    if (row_start + row_size + 1 > total_flat_size)
+    // the following check should never return true, => redundant
+    if (row_start + row_size + 1 > total_flat_size) {
+        printf("security guard was true\n");
         return;
+    }
+
 
     extern __shared__ unsigned int shared_mem[];
     unsigned int *count = shared_mem;
@@ -178,6 +149,7 @@ __global__ void gpu_counting_sort(unsigned int *matrix_alike, int *row_offsets, 
     }
 }
 
+
 void write_matrix_to_csv(const string& filename, const vector<unsigned int>& mat, int no_of_real_elements, int no_of_rows_of_matrix) {
 
     ofstream file(filename);
@@ -190,7 +162,7 @@ void write_matrix_to_csv(const string& filename, const vector<unsigned int>& mat
     int jmp = 0;
     for (size_t i = 0; i < no_of_real_elements + no_of_rows_of_matrix; i += (jmp+1)) {
         jmp = mat[i];
-        for (size_t j = i+1; j<=i+jmp; j++) {
+        for (size_t j = i; j<=i+jmp; j++) {
             file << mat[j];
             if (j < i + jmp) file << ",";
         }
@@ -239,7 +211,7 @@ int main(int argc, char *argv[]) {
 
     int *dimensions_1 = read_from_csv(name_of_ip_file, matrix_alike);
     int no_of_rows_of_matrix = dimensions_1[0];
-    int no_of_real_elements = dimensions_1[1];
+    int no_of_real_elements = dimensions_1[1] - dimensions_1[0];
 
     cout << "no_of_rows_of_matrix: " << no_of_rows_of_matrix << endl;
     cout << "no_of_real_elements: " << no_of_real_elements << endl;
@@ -255,11 +227,12 @@ int main(int argc, char *argv[]) {
     // for (size_t i = 0; i < no_of_real_elements + no_of_rows_of_matrix; i += (jmp+1))
     // {
     //     jmp = matrix_alike[i];
-    //     for (size_t j = i+1; j <= i+jmp; j++) {
+    //     for (size_t j = i; j <= i+jmp; j++) {
     //         cout << matrix_alike[j] << " ";
     //     }
     //     cout << endl;
     // }
+    // return 0;
     
     vector<unsigned int> sorted;
     // CPU sorting call
@@ -311,7 +284,22 @@ int main(int argc, char *argv[]) {
             offset += 1 + row_size;                   // Move to the next row
         }
 
-        // Memory transfer:
+        // printing row_offsets & row_sizes
+        cout << "row_offsets" << endl;
+        for (size_t i = 0; i < row_offsets.size(); i++)
+        {
+            cout << row_offsets[i] << " ";
+        }
+        cout << endl;
+        cout << "row_sizes" << endl;
+        for (size_t i = 0; i < row_sizes.size(); i++)
+        {
+            cout << row_sizes[i] << " ";
+        }
+        cout << endl;
+        cout << "entire size: " << matrix_alike.size() << endl;
+
+        // Memory allocation & transfer:
         cudaMalloc(&d_matrix_alike, matrix_alike.size() * sizeof(unsigned int));
         cudaMalloc(&d_row_offsets, row_offsets.size() * sizeof(int));
         cudaMalloc(&d_row_sizes, row_sizes.size() * sizeof(int));
@@ -320,8 +308,6 @@ int main(int argc, char *argv[]) {
         cudaMemcpy(d_matrix_alike, matrix_alike.data(), matrix_alike.size() * sizeof(unsigned int), cudaMemcpyHostToDevice);
         cudaMemcpy(d_row_offsets, row_offsets.data(), no_of_rows_of_matrix * sizeof(int), cudaMemcpyHostToDevice);
         cudaMemcpy(d_row_sizes, row_sizes.data(), no_of_rows_of_matrix * sizeof(int), cudaMemcpyHostToDevice);
-
-        // Copy input to output so that row sizes are preserved
         cudaMemcpy(d_sorted_matrix, d_matrix_alike, matrix_alike.size() * sizeof(unsigned int), cudaMemcpyDeviceToDevice);
 
         // Kernel Launch config:
@@ -338,13 +324,13 @@ int main(int argc, char *argv[]) {
         vector<unsigned int> sorted_host(matrix_alike.size());
         cudaMemcpy(sorted_host.data(), d_sorted_matrix, matrix_alike.size() * sizeof(unsigned int), cudaMemcpyDeviceToHost);
 
-        // cout << "============================" << endl;
-        // // PRETTY PRINTING
+        cout << "============================" << endl;
+        // PRETTY PRINTING
         // jmp = 0;
         // for (size_t i = 0; i < no_of_real_elements + no_of_rows_of_matrix; i += (jmp+1))
         // {
         //     jmp = sorted_host[i];
-        //     for (size_t j = i+1; j <= i+jmp; j++) {
+        //     for (size_t j = i; j <= i+jmp; j++) {
         //         cout << sorted_host[j] << " ";
         //     }
         //     cout << endl;
