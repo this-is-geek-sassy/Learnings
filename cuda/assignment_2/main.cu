@@ -199,59 +199,72 @@ __global__ void gpu_write(char *contents, uint32_t *sequences,
         }
     }
 }
-__global__ void gpu_sort(uint32_t *matrix_alike, uint32_t *row_offsets_unused,
-                         uint32_t *row_sizes, uint32_t *num_seq, int L,
-                         uint32_t *sorted_matrix, unsigned int max_value) {
+__global__ void gpu_sort(uint32_t *matrix_alike, uint32_t *row_offsets, uint32_t *row_sizes, uint32_t *num_seq, int L, uint32_t *sorted_matrix, unsigned int max_value) {
+    // sort the sequences
     int row_idx = blockIdx.x;
-    // guard: don't process beyond parsed rows
-    if ((unsigned)row_idx >= *num_seq) return;
+    int row_start = row_offsets[row_idx];
+    int row_size = row_sizes[row_idx];
+    unsigned int indiv_elem = row_start + threadIdx.x;
 
-    // compute row start in padded layout
-    int row_start = row_idx * L;
-    int row_size = (int)row_sizes[row_idx];
-    if (row_size <= 0) return;
+    // if (threadIdx.x == 0 && blockIdx.x == 0) {
+    //     printf("DEBUG KERNEL LAUNCHED total_flat_size=%d max_value=%u row_start=%d row_size=%d\n",
+    //         total_flat_size, max_value, row_start, row_size);
+    // }
+    // __syncthreads();
 
-    // number of bins
-    unsigned int bins = max_value + 1u;
-
-    extern __shared__ unsigned int shared_counts[]; // length = bins
-    unsigned int *count = shared_counts;
-
-    // initialize counts (parallel init)
-    for (unsigned int i = threadIdx.x; i < bins; i += blockDim.x) count[i] = 0u;
+    extern __shared__ unsigned int shared_mem[];
+    unsigned int *count = shared_mem;
+    // count array initialization
+    count[threadIdx.x] = 0;
     __syncthreads();
 
-    // counting
-    for (int i = threadIdx.x; i < row_size; i += blockDim.x) {
-        unsigned int val = matrix_alike[row_start + i];
-        if (val > max_value) val = max_value;
-        atomicAdd(&count[val], 1u);
+    // trying to count frequancies
+    if (threadIdx.x < row_size) {
+        unsigned int indiv_elem = row_start + 1 + threadIdx.x; // +1 to skip row size
+        atomicAdd(&count[matrix_alike[indiv_elem]], 1);
     }
-    __syncthreads();
 
-    // convert to exclusive prefix sum (single thread)
+    // trying prefix sum now
+    // Serial prefix sum (more reliable for counting sort)
     if (threadIdx.x == 0) {
-        unsigned int prev = 0u;
-        for (unsigned int i = 0; i < bins; ++i) {
-            unsigned int cur = count[i];
-            count[i] = prev;   // exclusive prefix
-            prev += cur;
+        // Convert counts to cumulative counts
+        for (int i = 1; i <= max_value; i++) {
+            count[i] += count[i-1];
         }
+        
+        // Convert to exclusive prefix sum (shift right)
+        for (int i = max_value; i > 0; i--) {
+            count[i] = count[i-1];
+        }
+        count[0] = 0;
     }
     __syncthreads();
 
-    // place elements into sorted_matrix (same padded layout)
-    for (int i = threadIdx.x; i < row_size; i += blockDim.x) {
-        unsigned int val = matrix_alike[row_start + i];
-        if (val > max_value) val = max_value;
-        unsigned int pos = atomicAdd(&count[val], 1u); // returns old start+offset
-        if (pos < (unsigned)L) {
-            sorted_matrix[row_start + pos] = val;
-        }
+    //DEBUG
+    // printf("HELLO!\n");
+    // if (row_idx == 0 && threadIdx.x == 0) {
+    //     printf("HELLO!\n");
+    //     for (int i=0; i<256; i++) {
+    //         printf("%d ", count[i]);
+    //     }
+    //     printf("\n");
+    // }
+
+    // trying to place stored value now
+    if (threadIdx.x < row_size) {
+        unsigned int data_idx = row_start + 1 + threadIdx.x; // +1 to skip row size
+        unsigned int value = matrix_alike[data_idx];
+        
+        // Get position and increment for next element with same value
+        int pos = atomicAdd(&count[value], 1); // atomicAdd, not atomicSub!
+        sorted_matrix[row_start + 1 + pos] = value;
     }
-    __syncthreads();
+    
+    // Copy the row size to output
+    if (threadIdx.x == 0) {
+        sorted_matrix[row_start] = matrix_alike[row_start];
+    }
 }
-
 
 int main(int argc, char **argv) {
     if (argc < 4 || string(argv[2]) != "-o") {
@@ -321,53 +334,28 @@ int main(int argc, char **argv) {
 
     cout << "Number of rows (sequences): " << num_seq_host << endl;
 
-    
+    // Copy lengths from GPU
     uint32_t *lengths_host = new uint32_t[num_seq_host];
     cudaMemcpy(lengths_host, lengths, num_seq_host * sizeof(uint32_t), cudaMemcpyDeviceToHost);
 
-    
+    // Now compute total size
     uint32_t total_size = 0;
     for (uint32_t i = 0; i < num_seq_host; i++) {
         total_size += lengths_host[i];
     }
     cout << "Total number of elements across all sequences = " << total_size << endl;
 
-    num_seq_host = 0;
-    cudaMemcpy(&num_seq_host, num_seq, sizeof(uint32_t), cudaMemcpyDeviceToHost);
-
-    
-    uint32_t *sorted_sequences = nullptr;
-    size_t padded_elems = (size_t)num_seq_host * (size_t)L;
-    cudaMalloc(&sorted_sequences, padded_elems * sizeof(uint32_t));
-    
-    cudaMemset(sorted_sequences, 0, padded_elems * sizeof(uint32_t));
+    uint32_t *sorted_sequences;
+    cudaMalloc(&sorted_sequences, total_size * sizeof(uint32_t));
     
 
-    
-    uint32_t *sequences_host = new uint32_t[num_seq_host * L];
-    cudaMemcpy(sequences_host, sequences, num_seq_host * L * sizeof(uint32_t), cudaMemcpyDeviceToHost);
 
-    
-    unsigned int max_value = 0u;
-    for (uint32_t r = 0; r < num_seq_host; ++r) {
-        uint32_t row_len = lengths_host[r];
-        for (uint32_t j = 0; j < row_len; ++j) {
-            uint32_t v = sequences_host[r * L + j];
-            if (v > max_value) max_value = v;
-        }
-    }
-    unsigned int bins = max_value + 1u;
-    size_t shared_bytes = bins * sizeof(unsigned int);
-    dim3 grid(num_seq_host);
-    dim3 block_sort(256);
-
-    gpu_sort<<<grid, block_sort, shared_bytes>>>(sequences, offsets, lengths, num_seq, L, sorted_sequences, max_value);
+    gpu_sort<<<num_seq_host, 256, 256*sizeof(uint32_t)>>>(sequences, offsets, lengths, num_seq, L, sorted_sequences, 255); //complete
 
     cudaEventRecord(sort);
     gpu_write<<<(NUM_WARPS + WARPS_PER_BLOCK - 1) / WARPS_PER_BLOCK, block,
-            WARPS_PER_BLOCK * 64 * sizeof(uint32_t)>>>(
-    contents_gpu, sorted_sequences, offsets, lengths, num_seq, NUM_WARPS, L);
-
+                WARPS_PER_BLOCK * 64 * sizeof(uint32_t)>>>(
+        contents_gpu, sorted_sequences, offsets, lengths, num_seq, NUM_WARPS, L);
 
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
