@@ -1,3 +1,9 @@
+// Add missing headers so this .cu file compiles with nvcc
+#include <bits/stdc++.h>
+#include <cuda.h>
+
+using namespace std;
+
 int *read_from_csv(const string& filename, vector<unsigned int>& data) {
     ifstream file(filename);
     long long int no_of_elements = 0;
