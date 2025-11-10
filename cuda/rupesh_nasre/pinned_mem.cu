@@ -2,8 +2,10 @@
 #include <cuda.h>
 
 __global__ void printk(int *counter) {
-    ++*counter; // in general, this can be arbitrary processing
-    printf("\t%d\n", *counter);
+    if (*counter % 2) {
+        ++*counter; // in general, this can be arbitrary processing
+        printf("GPU: %d\n", *counter);
+    }
 }
 
 int main() {
@@ -16,11 +18,14 @@ int main() {
         // cudaMemcpy(counter, &hcounter, sizeof(int), cudaMemcpyHostToDevice);
 
         printk<<<1,1>>>(counter);
-        cudaError_t err = cudaDeviceSynchronize();
-        if (err != cudaSuccess) {
-            printf("CUDA Error: %s\n", cudaGetErrorString(err));
-        }
-        ++*counter;
+
+        cudaDeviceSynchronize();
+        // cudaError_t err = cudaDeviceSynchronize();
+        // if (err != cudaSuccess) {
+        //     printf("CUDA Error: %s\n", cudaGetErrorString(err));
+        // }
+        if (*counter % 2 == 0)
+            ++*counter;
         // cudaMemcpy(&hcounter, counter, sizeof(int), cudaMemcpyDeviceToHost);
     } while(*counter < 10);         // in general, this can be arbitrary processing
 
