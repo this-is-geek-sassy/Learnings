@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "Jenkinsfile": "groovy",
+        "*html": "html",
+        "*.cu": "cpp",
+        "chrono": "cpp"
+    }
+}
