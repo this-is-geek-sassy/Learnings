@@ -1,0 +1,3 @@
+[submodule "cuda/assignment_3/bfs-cuda-gpu"]
+	path = cuda/assignment_3/bfs-cuda-gpu
+	url = https://github.com/kaletap/bfs-cuda-gpu.git
