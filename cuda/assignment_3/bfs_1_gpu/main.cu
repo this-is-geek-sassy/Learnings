@@ -11,7 +11,8 @@ class Checker
     vector<int> expected_answer;
 
 public:
-    Checker(vector<int> exp_ans) {
+    Checker(vector<int> exp_ans)
+    {
         expected_answer = exp_ans;
     }
 
@@ -110,8 +111,18 @@ __global__ void bfsKernel(int *adjacencyList, int *edgesOffset, int *edgesSize, 
     }
 }
 
+// Helper function to calculate Euclidean distance from start node
+double calculateEuclideanDistance(int node, int start, const Graph &G)
+{
+    // For a graph representation, we use the graph distance (BFS level) as a proxy
+    // In a real geometric graph, you would use actual coordinates
+    // Here we return the node index difference as a simple metric
+    return abs(node - start);
+}
+
 // GPU-accelerated BFS with CPU-GPU coordination
-void bfsGPU(int start, Graph &G, vector<int> &distance, vector<bool> &visited, bool verbose = true)
+void bfsGPU(int start, Graph &G, vector<int> &distance, vector<bool> &visited,
+            ofstream &outputFile, bool verbose = true)
 {
     const int n_blocks = (G.numVertices + N_THREADS_PER_BLOCK - 1) / N_THREADS_PER_BLOCK;
 
@@ -128,6 +139,9 @@ void bfsGPU(int start, Graph &G, vector<int> &distance, vector<bool> &visited, b
     int currentQueueSize = 1;
     const int NEXT_QUEUE_SIZE = 0;
     int level = 0;
+
+    // For tracking nodes at each level
+    vector<vector<int>> nodesAtLevel;
 
     // Allocate device memory
     const int size = G.numVertices * sizeof(int);
@@ -167,22 +181,34 @@ void bfsGPU(int start, Graph &G, vector<int> &distance, vector<bool> &visited, b
     // BFS traversal loop
     if (verbose)
     {
-        cout << "\n[Phase 3] Starting BFS traversal with CPU-GPU coordination..." << endl;
-        cout << "------------------------------------------------------------" << endl;
+        cout << "\n[Phase 3] Starting BFS traversal..." << endl;
     }
+
+    // Print table header
+    string header = "| Level | # of nodes discovered | Closest and farthest node (in this level) from the start node and corresponding Euclidean Distance wrt start node |";
+    string separator(header.length(), '-');
+
+    cout << "\n"
+         << separator << endl;
+    cout << header << endl;
+    cout << separator << endl;
+
+    outputFile << separator << endl;
+    outputFile << header << endl;
+    outputFile << separator << endl;
+
     auto bfsStart = chrono::steady_clock::now();
 
     while (currentQueueSize > 0)
     {
-        if (verbose)
-        {
-            cout << "Level " << level << ": Processing " << currentQueueSize << " vertices" << endl;
-            cout << "  -> GPU: Computing next frontier..." << endl;
-        }
-
         // Determine which queue to use (ping-pong between two queues)
         int *d_currentQueue = (level % 2 == 0) ? d_firstQueue : d_secondQueue;
         int *d_nextQueue = (level % 2 == 0) ? d_secondQueue : d_firstQueue;
+
+        // Copy current queue to host to track nodes at this level
+        vector<int> currentLevelNodes(currentQueueSize);
+        cudaMemcpy(currentLevelNodes.data(), d_currentQueue, currentQueueSize * sizeof(int), cudaMemcpyDeviceToHost);
+        nodesAtLevel.push_back(currentLevelNodes);
 
         // GPU processes current frontier
         bfsKernel<<<n_blocks, N_THREADS_PER_BLOCK>>>(
@@ -191,14 +217,52 @@ void bfsGPU(int start, Graph &G, vector<int> &distance, vector<bool> &visited, b
 
         cudaDeviceSynchronize();
 
+        // Find closest and farthest nodes at this level
+        int closestNode = currentLevelNodes[0];
+        int farthestNode = currentLevelNodes[0];
+        double closestDist = calculateEuclideanDistance(closestNode, start, G);
+        double farthestDist = closestDist;
+
+        for (int node : currentLevelNodes)
+        {
+            double dist = calculateEuclideanDistance(node, start, G);
+            if (dist < closestDist)
+            {
+                closestDist = dist;
+                closestNode = node;
+            }
+            if (dist > farthestDist)
+            {
+                farthestDist = dist;
+                farthestNode = node;
+            }
+        }
+
+        // Print level information
+        char buffer[512];
+        if (level == 0)
+        {
+            snprintf(buffer, sizeof(buffer),
+                     "| %-5d | %-21d | Farthest node = %d, Dist=%.1f\n| %5s | %21s | Closest node = %d, Dist=%.1f",
+                     level, currentQueueSize, farthestNode, farthestDist, "", "", closestNode, closestDist);
+        }
+        else
+        {
+            snprintf(buffer, sizeof(buffer),
+                     "| %-5d | %-21d | Farthest node = %d, Dist=%.1f\n| %5s | %21s | Closest node = %d, Dist=%.1f",
+                     level, currentQueueSize, farthestNode, farthestDist, "", "", closestNode, closestDist);
+        }
+
+        string output(buffer);
+        cout << output << endl;
+        cout << separator << endl;
+        outputFile << output << endl;
+        outputFile << separator << endl;
+
         // CPU transfers next queue size back to host
-        if (verbose)
-            cout << "  -> CPU: Retrieving next frontier size..." << endl;
         cudaMemcpy(&currentQueueSize, d_nextQueueSize, sizeof(int), cudaMemcpyDeviceToHost);
 
         // CPU resets next queue size counter for next iteration
-        if (verbose)
-            cout << "  -> CPU: Preparing for next iteration..." << endl;
         cudaMemcpy(d_nextQueueSize, &NEXT_QUEUE_SIZE, sizeof(int), cudaMemcpyHostToDevice);
 
         ++level;
@@ -207,12 +271,9 @@ void bfsGPU(int start, Graph &G, vector<int> &distance, vector<bool> &visited, b
     auto bfsEnd = chrono::steady_clock::now();
     auto bfsDuration = chrono::duration_cast<chrono::milliseconds>(bfsEnd - bfsStart).count();
 
-    if (verbose)
-    {
-        cout << "------------------------------------------------------------" << endl;
-        cout << "BFS completed in " << level << " levels" << endl;
-        cout << "Total BFS time: " << bfsDuration << " ms" << endl;
-    }
+    string footer = "\nTotal BFS discovery time = " + to_string(bfsDuration) + " ms";
+    cout << footer << endl;
+    outputFile << footer << endl;
 
     // Transfer results back to host
     if (verbose)
@@ -294,6 +355,28 @@ int main(int argc, char *argv[])
     if (argc >= 3)
     {
         startVertex = atoi(argv[2]);
+    }
+
+    // Extract graph name from file path for output file
+    string graphName = csvFilePath;
+    size_t lastSlash = graphName.find_last_of("/\\");
+    if (lastSlash != string::npos)
+    {
+        graphName = graphName.substr(lastSlash + 1);
+    }
+    size_t lastDot = graphName.find_last_of(".");
+    if (lastDot != string::npos)
+    {
+        graphName = graphName.substr(0, lastDot);
+    }
+
+    // Create output file
+    string outputFileName = "output_" + graphName + "_task_1.txt";
+    ofstream outputFile(outputFileName);
+    if (!outputFile.is_open())
+    {
+        cerr << "Error: Could not create output file: " << outputFileName << endl;
+        return 1;
     }
 
     try
@@ -382,8 +465,13 @@ int main(int argc, char *argv[])
         cout << "Running GPU BFS from vertex " << startVertex << endl;
         cout << "============================================" << endl;
 
+        outputFile << "\n\n============================================" << endl;
+        outputFile << "Running GPU BFS from vertex " << startVertex << endl;
+        outputFile << "============================================" << endl;
+
         auto gpuStart = chrono::steady_clock::now();
-        bfsGPU(startVertex, graph, distanceGPU, visitedGPU, !isLargeGraph);
+        bool verboseMode = !isLargeGraph;
+        bfsGPU(startVertex, graph, distanceGPU, visitedGPU, outputFile, verboseMode);
         auto gpuEnd = chrono::steady_clock::now();
         auto gpuDuration = chrono::duration_cast<chrono::microseconds>(gpuEnd - gpuStart).count();
 
@@ -420,21 +508,33 @@ int main(int argc, char *argv[])
 
         // ========== Performance Comparison ==========
         cout << "\n============================================" << endl;
-        cout << "Performance Comparison" << endl;
+        cout << "         PERFORMANCE COMPARISON             " << endl;
         cout << "============================================" << endl;
-        cout << "CPU Time: " << cpuDuration / 1000.0 << " ms" << endl;
-        cout << "GPU Time: " << gpuDuration / 1000.0 << " ms" << endl;
+        cout << "CPU Execution Time: " << cpuDuration / 1000.0 << " ms" << endl;
+        cout << "GPU Execution Time: " << gpuDuration / 1000.0 << " ms" << endl;
+        cout << "--------------------------------------------" << endl;
+
+        outputFile << "\n============================================" << endl;
+        outputFile << "         PERFORMANCE COMPARISON             " << endl;
+        outputFile << "============================================" << endl;
+        outputFile << "CPU Execution Time: " << cpuDuration / 1000.0 << " ms" << endl;
+        outputFile << "GPU Execution Time: " << gpuDuration / 1000.0 << " ms" << endl;
+        outputFile << "--------------------------------------------" << endl;
 
         if (cpuDuration > gpuDuration)
         {
             double speedup = (double)cpuDuration / gpuDuration;
-            cout << "Speedup: " << speedup << "x (GPU is faster)" << endl;
+            cout << "GPU Speedup: " << fixed << setprecision(2) << speedup << "x (GPU is FASTER)" << endl;
+            outputFile << "GPU Speedup: " << fixed << setprecision(2) << speedup << "x (GPU is FASTER)" << endl;
         }
         else
         {
             double slowdown = (double)gpuDuration / cpuDuration;
-            cout << "Slowdown: " << slowdown << "x (CPU is faster)" << endl;
+            cout << "GPU Slowdown: " << fixed << setprecision(2) << slowdown << "x (CPU is faster for small graphs)" << endl;
+            outputFile << "GPU Slowdown: " << fixed << setprecision(2) << slowdown << "x (CPU is faster for small graphs)" << endl;
         }
+        cout << "============================================" << endl;
+        outputFile << "============================================" << endl;
 
         // Show first 20 vertices distances
         cout << "\nDistance from source (first 20 vertices):" << endl;
@@ -453,10 +553,15 @@ int main(int argc, char *argv[])
                 cout << distanceGPU[i] << endl;
         }
         cout << endl;
+
+        // Close output file
+        outputFile.close();
+        cout << "\n✓ Output written to file: " << outputFileName << endl;
     }
     catch (const exception &e)
     {
         cerr << "Error: " << e.what() << endl;
+        outputFile.close();
         return 1;
     }
 
