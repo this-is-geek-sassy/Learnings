@@ -84,16 +84,22 @@
     \vspace{1.5cm}
     
     {\Large\itshape Progressive Optimization Analysis\par}
-    \vspace{1.5cm}
+    \vspace{2cm}
     
-    {\large\textbf{Saswata Mishra}\\[0.3cm]
-    Roll Number: CS24MTECH12001\par}
+    {\large Assignment Report\par}
     \vspace{0.5cm}
-    
-    {\large Indian Institute of Technology Hyderabad\par}
-    \vspace{0.3cm}
     {\large GPU Programming\par}
     \vspace{1.5cm}
+    
+    \begin{tcolorbox}[colback=blue!10!white,colframe=blue!75!black,width=0.7\textwidth]
+        \centering
+        \textbf{Name:} Saswata Mishra\\[0.3cm]
+        \textbf{Roll Number:} CS24MTECH12001\\[0.3cm]
+        \textbf{Institute:} IIT Hyderabad\\[0.3cm]
+        \textbf{Course:} GPU Programming
+    \end{tcolorbox}
+    
+    \vspace{1cm}
     
     \begin{tcolorbox}[colback=blue!5!white,colframe=blue!75!black,title=Implementation Highlights]
         \begin{itemize}
@@ -696,20 +702,6 @@ The benchmark results were visualized using Python with matplotlib:
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=\textwidth]{benchmark_comprehensive.png}
-    \caption{Comprehensive Benchmark Analysis: All test configurations, scaling trends, speedup comparison, and summary statistics}
-    \label{fig:comprehensive}
-\end{figure}
-
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=\textwidth]{benchmark_by_degree.png}
-    \caption{Runtime vs Graph Size: Performance scaling with increasing nodes, separated by graph degree (8, 16, 32 neighbors per node)}
-    \label{fig:by_degree}
-\end{figure}
-
-\begin{figure}[H]
-    \centering
     \includegraphics[width=\textwidth]{benchmark_by_nodes.png}
     \caption{Runtime vs Degree: Performance with varying graph connectivity, separated by graph size (10K, 50K, 100K nodes)}
     \label{fig:by_nodes}
@@ -919,4 +911,18 @@ make all                    # Compile all three versions
 python3 plot_benchmark.py   # Generate visualization plots
 \end{lstlisting}
 
-\end{document}
+\end{document}ics[width=\textwidth]{benchmark_comprehensive.png}
+    \caption{Comprehensive Benchmark Analysis: All test configurations, scaling trends, speedup comparison, and summary statistics}
+    \label{fig:comprehensive}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{benchmark_by_degree.png}
+    \caption{Runtime vs Graph Size: Performance scaling with increasing nodes, separated by graph degree (8, 16, 32 neighbors per node)}
+    \label{fig:by_degree}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraph
