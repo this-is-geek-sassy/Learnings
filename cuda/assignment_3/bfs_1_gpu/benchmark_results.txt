@@ -1,0 +1,123 @@
+BFS CUDA Implementation Benchmark Results
+=========================================
+Date: Sun Nov 16 11:00:30 PM IST 2025
+Host: user
+CUDA Version: Cuda compilation tools, release 12.9, V12.9.86
+
+=========================================
+BENCHMARK RESULTS
+=========================================
+
+
+Test Configuration: Nodes=1000, Degree=8
+Start Node: 329
+----------------------------------------
+Baseline Time: 50.156 ms
+Stream Time: 51.829 ms
+CUDA Graph Time: 44.522 ms
+
+Stream Speedup: .96x
+CUDA Graph Speedup: 1.12x
+
+Test Configuration: Nodes=5000, Degree=8
+Start Node: 1388
+----------------------------------------
+Baseline Time: 51.207 ms
+Stream Time: 46.68 ms
+CUDA Graph Time: 48.635 ms
+
+Stream Speedup: 1.09x
+CUDA Graph Speedup: 1.05x
+
+Test Configuration: Nodes=10000, Degree=8
+Start Node: 6722
+----------------------------------------
+Baseline Time: 45.659 ms
+Stream Time: 42.429 ms
+CUDA Graph Time: 43.736 ms
+
+Stream Speedup: 1.07x
+CUDA Graph Speedup: 1.04x
+
+Test Configuration: Nodes=50000, Degree=8
+Start Node: 43525
+----------------------------------------
+Baseline Time: 44.327 ms
+Stream Time: 47.977 ms
+CUDA Graph Time: 47.534 ms
+
+Stream Speedup: .92x
+CUDA Graph Speedup: .93x
+
+Test Configuration: Nodes=100000, Degree=8
+Start Node: 43525
+----------------------------------------
+Baseline Time: 51.429 ms
+Stream Time: 57.703 ms
+CUDA Graph Time: 52.664 ms
+
+Stream Speedup: .89x
+CUDA Graph Speedup: .97x
+
+Test Configuration: Nodes=10000, Degree=16
+Start Node: 3263
+----------------------------------------
+Baseline Time: 44.378 ms
+Stream Time: 38.525 ms
+CUDA Graph Time: 41.653 ms
+
+Stream Speedup: 1.15x
+CUDA Graph Speedup: 1.06x
+
+Test Configuration: Nodes=50000, Degree=16
+Start Node: 43525
+----------------------------------------
+Baseline Time: 44.825 ms
+Stream Time: 48.746 ms
+CUDA Graph Time: 50.876 ms
+
+Stream Speedup: .91x
+CUDA Graph Speedup: .88x
+
+Test Configuration: Nodes=100000, Degree=16
+Start Node: 43525
+----------------------------------------
+Baseline Time: 62.107 ms
+Stream Time: 61.542 ms
+CUDA Graph Time: 55.219 ms
+
+Stream Speedup: 1.00x
+CUDA Graph Speedup: 1.12x
+
+Test Configuration: Nodes=10000, Degree=32
+Start Node: 3263
+----------------------------------------
+Baseline Time: 41.942 ms
+Stream Time: 39.648 ms
+CUDA Graph Time: 49.6 ms
+
+Stream Speedup: 1.05x
+CUDA Graph Speedup: .84x
+
+Test Configuration: Nodes=50000, Degree=32
+Start Node: 43525
+----------------------------------------
+Baseline Time: 43.657 ms
+Stream Time: 50.334 ms
+CUDA Graph Time: 48.755 ms
+
+Stream Speedup: .86x
+CUDA Graph Speedup: .89x
+
+=========================================
+SUMMARY
+=========================================
+
+Average Execution Times:
+  Baseline: 47.9687 ms
+  Stream: 48.5413 ms
+  CUDA Graph: 48.3194 ms
+
+Average Speedups:
+  Stream vs Baseline: .98x
+  CUDA Graph vs Baseline: .99x

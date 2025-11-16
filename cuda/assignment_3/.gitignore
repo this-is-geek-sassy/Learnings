@@ -1,1 +1,3 @@
 *.csv
+output_graph*
+bfs_1_gpu/benchmark_graphs/*
