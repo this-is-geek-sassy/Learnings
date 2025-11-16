@@ -4,23 +4,30 @@ CXX = g++
 CXXFLAGS = -std=c++11 -O3
 NVCCFLAGS = -std=c++11 -O3 -arch=sm_86
 
-# Target executable
-TARGET = graph_bfs
+# Target executables
+TARGET_BASELINE = bfs_baseline
+TARGET_STREAM = bfs_stream
 
 # Source files
-CU_SOURCES = bfs_baseline.cu
+CU_BASELINE = bfs_baseline.cu
+CU_STREAM = bfs_stream.cu
 CPP_SOURCES = graph.cpp
 HEADERS = graph.h
 
 # Object files
-CU_OBJECTS = $(CU_SOURCES:.cu=.o)
-CPP_OBJECTS = $(CPP_SOURCES:.cpp=.o)
+OBJ_BASELINE = bfs_baseline.o
+OBJ_STREAM = bfs_stream.o
+OBJ_GRAPH = graph.o
 
-# Default target
-all: $(TARGET)
+# Default target - build both versions
+all: $(TARGET_BASELINE) $(TARGET_STREAM)
 
-# Link object files
-$(TARGET): $(CU_OBJECTS) $(CPP_OBJECTS)
+# Link baseline version
+$(TARGET_BASELINE): $(OBJ_BASELINE) $(OBJ_GRAPH)
+	$(NVCC) $(NVCCFLAGS) -o $@ $^
+
+# Link stream version
+$(TARGET_STREAM): $(OBJ_STREAM) $(OBJ_GRAPH)
 	$(NVCC) $(NVCCFLAGS) -o $@ $^
 
 # Compile .cu files
@@ -33,10 +40,14 @@ $(TARGET): $(CU_OBJECTS) $(CPP_OBJECTS)
 
 # Clean build artifacts
 clean:
-	rm -f $(TARGET) *.o
+	rm -f $(TARGET_BASELINE) $(TARGET_STREAM) *.o
 
-# Run with default graph
-run: $(TARGET)
-	./$(TARGET) ../graph_100_8.csv
+# Run baseline with default graph
+run-baseline: $(TARGET_BASELINE)
+	./$(TARGET_BASELINE) ../graph_100_8.csv
 
-.PHONY: all clean run
+# Run stream version with default graph
+run-stream: $(TARGET_STREAM)
+	./$(TARGET_STREAM) ../graph_100_8.csv
+
+.PHONY: all clean run-baseline run-stream
