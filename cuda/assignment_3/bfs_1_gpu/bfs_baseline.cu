@@ -1,4 +1,5 @@
 #include <bits/stdc++.h>
+#include <cuda.h>
 #include "graph.h"
 
 using namespace std;

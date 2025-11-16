@@ -1,5 +1,4 @@
 #include <bits/stdc++.h>
-#include <cuda.h>
 #include "graph.h"
 
 using namespace std;
@@ -137,13 +136,13 @@ double calculateEuclideanDistance(int node, int start, const Graph &G)
     return sqrt(sum);
 }
 
-// Stream-optimized GPU BFS with on-demand neighbor transfer (no full adjacency list transfer)
-void bfsGPU_Stream(int start, Graph &G, vector<int> &distance, vector<bool> &visited,
-                   ofstream &outputFile, bool verbose = true)
+// CUDA Graph-based GPU BFS with stream capture
+void bfsGPU_Graph(int start, Graph &G, vector<int> &distance, vector<bool> &visited,
+                  ofstream &outputFile, bool verbose = true)
 {
     const int n_blocks = (G.numVertices + N_THREADS_PER_BLOCK - 1) / N_THREADS_PER_BLOCK;
 
-    // Device pointers - NO d_adjacencyList allocation!
+    // Device pointers - NO d_adjacencyList!
     int *d_edgesOffset;
     int *d_edgesSize;
     int *d_firstQueue;
@@ -156,9 +155,14 @@ void bfsGPU_Stream(int start, Graph &G, vector<int> &distance, vector<bool> &vis
     int *d_compactOffsets;
     int *d_compactSizes;
 
-    // Pinned host memory for faster transfers
-    int *h_currentQueueSize;
+    // Pinned host memory for async transfers
+    int *h_queueSize;
     int *h_nextQueueSize;
+
+    // Pinned host memory for compact neighbor data (pre-allocated for max size)
+    int *h_compactNeighbors;
+    int *h_compactOffsets;
+    int *h_compactSizes;
 
     // Host variables
     int currentQueueSize = 1;
@@ -167,14 +171,6 @@ void bfsGPU_Stream(int start, Graph &G, vector<int> &distance, vector<bool> &vis
 
     // For tracking nodes at each level
     vector<vector<int>> nodesAtLevel;
-
-    // Create CUDA streams for overlapping operations
-    cudaStream_t computeStream;
-    cudaStream_t transferStream1, transferStream2, transferStream3; // Separate streams for concurrent transfers
-    cudaStreamCreate(&computeStream);
-    cudaStreamCreate(&transferStream1);
-    cudaStreamCreate(&transferStream2);
-    cudaStreamCreate(&transferStream3);
 
     // Allocate device memory (NO adjacency list!)
     const int size = G.numVertices * sizeof(int);
@@ -191,39 +187,42 @@ void bfsGPU_Stream(int start, Graph &G, vector<int> &distance, vector<bool> &vis
     cudaMalloc((void **)&d_compactOffsets, size);
     cudaMalloc((void **)&d_compactSizes, size);
 
-    // Allocate pinned host memory for async transfers
-    cudaMallocHost((void **)&h_currentQueueSize, sizeof(int));
+    // Allocate pinned host memory for async operations
+    cudaMallocHost((void **)&h_queueSize, sizeof(int));
     cudaMallocHost((void **)&h_nextQueueSize, sizeof(int));
+
+    // Allocate pinned memory for compact data (max size to avoid reallocation)
+    cudaMallocHost((void **)&h_compactNeighbors, G.numEdges * sizeof(int));
+    cudaMallocHost((void **)&h_compactOffsets, G.numVertices * sizeof(int));
+    cudaMallocHost((void **)&h_compactSizes, G.numVertices * sizeof(int));
 
     // Transfer graph METADATA only (not adjacency list!)
     if (verbose)
-        cout << "\n[Phase 1] Transferring graph metadata (NO adjacency list transfer)..." << endl;
+        cout << "\n[Phase 1] CPU -> GPU: Transferring graph metadata (NO adjacency list transfer)..." << endl;
     auto transferStart = chrono::steady_clock::now();
 
-    // Use separate streams for concurrent transfers
-    cudaMemcpyAsync(d_edgesOffset, &G.edgesOffset[0], size, cudaMemcpyHostToDevice, transferStream1);
-    cudaMemcpyAsync(d_edgesSize, &G.edgesSize[0], size, cudaMemcpyHostToDevice, transferStream2);
-    cudaMemcpyAsync(d_nextQueueSize, &NEXT_QUEUE_SIZE, sizeof(int), cudaMemcpyHostToDevice, transferStream3);
-    cudaMemcpyAsync(d_firstQueue, &start, sizeof(int), cudaMemcpyHostToDevice, transferStream3);
-
-    // Initialize distance array
-    distance = vector<int>(G.numVertices, INT_MAX);
-    distance[start] = 0;
-    cudaMemcpyAsync(d_distance, distance.data(), size, cudaMemcpyHostToDevice, transferStream1);
-
-    // Wait for initial transfers to complete
-    cudaStreamSynchronize(transferStream1);
-    cudaStreamSynchronize(transferStream2);
-    cudaStreamSynchronize(transferStream3);
+    // Use synchronous copy for initial setup (before stream capture)
+    cudaMemcpy(d_edgesOffset, &G.edgesOffset[0], size, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_edgesSize, &G.edgesSize[0], size, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_nextQueueSize, &NEXT_QUEUE_SIZE, sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_firstQueue, &start, sizeof(int), cudaMemcpyHostToDevice);
 
     auto transferEnd = chrono::steady_clock::now();
     auto transferDuration = chrono::duration_cast<chrono::microseconds>(transferEnd - transferStart).count();
     if (verbose)
-        cout << "Graph metadata transfer completed in " << transferDuration / 1000.0 << " ms" << endl;
+        cout << "Graph transfer completed in " << transferDuration / 1000.0 << " ms" << endl;
 
+    // Initialize distance array
+    if (verbose)
+        cout << "\n[Phase 2] CPU -> GPU: Transferring initial distance array..." << endl;
+    distance = vector<int>(G.numVertices, INT_MAX);
+    distance[start] = 0;
+    cudaMemcpy(d_distance, distance.data(), size, cudaMemcpyHostToDevice);
+
+    // BFS traversal loop with CUDA Graph stream capture and on-demand neighbor transfer
     if (verbose)
     {
-        cout << "\n[Phase 2] Starting BFS with on-demand neighbor transfer..." << endl;
+        cout << "\n[Phase 3] Starting BFS with CUDA Graph + on-demand neighbor transfer (pinned memory)..." << endl;
     }
 
     // Print table header
@@ -241,14 +240,14 @@ void bfsGPU_Stream(int start, Graph &G, vector<int> &distance, vector<bool> &vis
 
     auto bfsStart = chrono::steady_clock::now();
 
-    // Preallocate host buffers
-    vector<int> currentLevelNodes;
-    currentLevelNodes.reserve(G.numVertices);
+    // Create streams and CUDA Graph
+    cudaStream_t stream;
+    cudaStreamCreate(&stream);
 
-    // Host buffers for compact neighbor data
-    vector<int> h_compactNeighbors;
-    vector<int> h_compactOffsets;
-    vector<int> h_compactSizes;
+    cudaGraph_t graph;
+    cudaGraphExec_t graphExec = nullptr;
+    cudaGraphNode_t kernelNode;
+    bool graphCaptured = false;
 
     while (currentQueueSize > 0)
     {
@@ -256,67 +255,122 @@ void bfsGPU_Stream(int start, Graph &G, vector<int> &distance, vector<bool> &vis
         int *d_currentQueue = (level % 2 == 0) ? d_firstQueue : d_secondQueue;
         int *d_nextQueue = (level % 2 == 0) ? d_secondQueue : d_firstQueue;
 
-        // Copy current queue to host
-        currentLevelNodes.resize(currentQueueSize);
-        cudaMemcpyAsync(currentLevelNodes.data(), d_currentQueue,
-                        currentQueueSize * sizeof(int), cudaMemcpyDeviceToHost, transferStream1);
+        // Copy current queue to host to track nodes at this level
+        vector<int> currentLevelNodes(currentQueueSize);
+        cudaMemcpy(currentLevelNodes.data(), d_currentQueue, currentQueueSize * sizeof(int), cudaMemcpyDeviceToHost);
+        nodesAtLevel.push_back(currentLevelNodes);
 
-        // Wait to get the current frontier nodes
-        cudaStreamSynchronize(transferStream1);
-
-        // Pack neighbors for ONLY the nodes in current frontier
-        h_compactNeighbors.clear();
-        h_compactOffsets.clear();
-        h_compactSizes.clear();
-
+        // Pack neighbors for ONLY the nodes in current frontier into pinned memory
         int currentOffset = 0;
+        int totalNeighbors = 0;
+
         for (int i = 0; i < currentQueueSize; ++i)
         {
             int node = currentLevelNodes[i];
             int offset = G.edgesOffset[node];
             int numNeighbors = G.edgesSize[node];
 
-            h_compactOffsets.push_back(currentOffset);
-            h_compactSizes.push_back(numNeighbors);
+            h_compactOffsets[i] = currentOffset;
+            h_compactSizes[i] = numNeighbors;
 
-            // Copy this node's neighbors
-            for (int j = 0; j < numNeighbors; ++j)
-            {
-                h_compactNeighbors.push_back(G.adjacencyList[offset + j]);
-            }
+            // Copy this node's neighbors directly into pinned array
+            memcpy(&h_compactNeighbors[currentOffset], &G.adjacencyList[offset], numNeighbors * sizeof(int));
 
             currentOffset += numNeighbors;
         }
+        totalNeighbors = currentOffset;
 
-        // Transfer ONLY the compact neighbor data needed for this iteration
-        // Use separate streams for concurrent uploads
-        int compactSize = h_compactNeighbors.size() * sizeof(int);
-        cudaMemcpyAsync(d_compactNeighbors, h_compactNeighbors.data(), compactSize,
-                        cudaMemcpyHostToDevice, transferStream1);
-        cudaMemcpyAsync(d_compactOffsets, h_compactOffsets.data(),
-                        currentQueueSize * sizeof(int), cudaMemcpyHostToDevice, transferStream2);
-        cudaMemcpyAsync(d_compactSizes, h_compactSizes.data(),
-                        currentQueueSize * sizeof(int), cudaMemcpyHostToDevice, transferStream3);
+        // For first iteration, capture the pattern with stream capture
+        if (!graphCaptured)
+        {
+            if (verbose)
+                cout << "[CUDA Graph] Capturing BFS iteration pattern with pinned memory transfers..." << endl;
 
-        // Wait for all compact data transfers to complete
-        cudaStreamSynchronize(transferStream1);
-        cudaStreamSynchronize(transferStream2);
-        cudaStreamSynchronize(transferStream3);
+            // Begin stream capture
+            cudaStreamBeginCapture(stream, cudaStreamCaptureModeGlobal);
 
-        // GPU processes current frontier with compact neighbor data
-        bfsKernel_Compact<<<n_blocks, N_THREADS_PER_BLOCK, 0, computeStream>>>(
-            d_compactNeighbors, d_compactOffsets, d_compactSizes, d_distance,
-            currentQueueSize, d_currentQueue, d_nextQueueSize, d_nextQueue, level);
+            // Capture transfer of compact neighbor data (using pinned memory)
+            cudaMemcpyAsync(d_compactNeighbors, h_compactNeighbors, totalNeighbors * sizeof(int),
+                            cudaMemcpyHostToDevice, stream);
+            cudaMemcpyAsync(d_compactOffsets, h_compactOffsets, currentQueueSize * sizeof(int),
+                            cudaMemcpyHostToDevice, stream);
+            cudaMemcpyAsync(d_compactSizes, h_compactSizes, currentQueueSize * sizeof(int),
+                            cudaMemcpyHostToDevice, stream);
 
-        // Asynchronously copy next queue size back to pinned host memory
-        cudaMemcpyAsync(h_nextQueueSize, d_nextQueueSize, sizeof(int),
-                        cudaMemcpyDeviceToHost, computeStream);
+            // Capture kernel launch with compact data
+            bfsKernel_Compact<<<n_blocks, N_THREADS_PER_BLOCK, 0, stream>>>(
+                d_compactNeighbors, d_compactOffsets, d_compactSizes, d_distance,
+                currentQueueSize, d_currentQueue, d_nextQueueSize, d_nextQueue, level);
 
-        // Store nodes for this level
-        nodesAtLevel.push_back(currentLevelNodes);
+            // Capture async memcpy of next queue size
+            cudaMemcpyAsync(h_nextQueueSize, d_nextQueueSize, sizeof(int),
+                            cudaMemcpyDeviceToHost, stream);
 
-        // Find closest and farthest nodes at this level based on Euclidean distance
-        // This happens on CPU while GPU is computing next level
+            // End stream capture
+            cudaStreamEndCapture(stream, &graph);
+
+            // Instantiate the captured graph
+            cudaGraphInstantiate(&graphExec, graph, nullptr, nullptr, 0);
+
+            // Get the kernel node for later updates
+            size_t numNodes = 0;
+            cudaGraphGetNodes(graph, nullptr, &numNodes);
+            cudaGraphNode_t *nodes = new cudaGraphNode_t[numNodes];
+            cudaGraphGetNodes(graph, nodes, &numNodes);
+
+            // Find the kernel node
+            for (size_t i = 0; i < numNodes; i++)
+            {
+                cudaGraphNodeType type;
+                cudaGraphNodeGetType(nodes[i], &type);
+                if (type == cudaGraphNodeTypeKernel)
+                {
+                    kernelNode = nodes[i];
+                    break;
+                }
+            }
+            delete[] nodes;
+
+            graphCaptured = true;
+            if (verbose)
+                cout << "[CUDA Graph] Graph instantiated successfully! Will reuse for subsequent iterations." << endl;
+        }
+        else
+        {
+            // Transfer updated compact data for this iteration (async, outside graph)
+            // This is unavoidable because frontier content changes each iteration
+            cudaMemcpyAsync(d_compactNeighbors, h_compactNeighbors, totalNeighbors * sizeof(int),
+                            cudaMemcpyHostToDevice, stream);
+            cudaMemcpyAsync(d_compactOffsets, h_compactOffsets, currentQueueSize * sizeof(int),
+                            cudaMemcpyHostToDevice, stream);
+            cudaMemcpyAsync(d_compactSizes, h_compactSizes, currentQueueSize * sizeof(int),
+                            cudaMemcpyHostToDevice, stream);
+
+            // Wait for transfers to complete before launching graph
+            cudaStreamSynchronize(stream);
+
+            // Update kernel parameters for subsequent iterations
+            cudaKernelNodeParams kernelParams;
+            cudaGraphKernelNodeGetParams(kernelNode, &kernelParams);
+
+            // Update the parameters
+            void *kernelArgs[] = {&d_compactNeighbors, &d_compactOffsets, &d_compactSizes, &d_distance,
+                                  &currentQueueSize, &d_currentQueue, &d_nextQueueSize, &d_nextQueue, &level};
+            kernelParams.kernelParams = kernelArgs;
+
+            cudaGraphExecKernelNodeSetParams(graphExec, kernelNode, &kernelParams);
+        }
+
+        // Launch the CUDA graph (replays captured pattern)
+        cudaGraphLaunch(graphExec, stream);
+        cudaStreamSynchronize(stream);
+
+        // Get next queue size from pinned memory
+        currentQueueSize = *h_nextQueueSize;
+
+        // Reset next queue size for next iteration
+        *h_nextQueueSize = NEXT_QUEUE_SIZE;
+        cudaMemcpy(d_nextQueueSize, h_nextQueueSize, sizeof(int), cudaMemcpyHostToDevice); // Find closest and farthest nodes at this level based on Euclidean distance
         int closestNode = currentLevelNodes[0];
         int farthestNode = currentLevelNodes[0];
         double closestDist = calculateEuclideanDistance(closestNode, start, G);
@@ -349,24 +403,12 @@ void bfsGPU_Stream(int start, Graph &G, vector<int> &distance, vector<bool> &vis
         outputFile << output << endl;
         outputFile << separator << endl;
 
-        // Wait for kernel completion and next queue size transfer
-        cudaStreamSynchronize(computeStream);
-
-        // Update current queue size from pinned memory
-        currentQueueSize = *h_nextQueueSize;
-
-        // Reset next queue size counter for next iteration (async on compute stream)
-        cudaMemcpyAsync(d_nextQueueSize, &NEXT_QUEUE_SIZE, sizeof(int),
-                        cudaMemcpyHostToDevice, computeStream);
-
+        // Update level counter
         ++level;
-    }
 
-    // Ensure all operations are complete
-    cudaStreamSynchronize(computeStream);
-    cudaStreamSynchronize(transferStream1);
-    cudaStreamSynchronize(transferStream2);
-    cudaStreamSynchronize(transferStream3);
+        // Note: Queue pointers switch automatically via (level % 2) logic
+        // Graph will be re-executed with updated queue data
+    }
 
     auto bfsEnd = chrono::steady_clock::now();
     auto bfsDuration = chrono::duration_cast<chrono::milliseconds>(bfsEnd - bfsStart).count();
@@ -375,11 +417,10 @@ void bfsGPU_Stream(int start, Graph &G, vector<int> &distance, vector<bool> &vis
     cout << footer << endl;
     outputFile << footer << endl;
 
-    // Transfer results back to host (async)
+    // Transfer results back to host
     if (verbose)
-        cout << "\n[Phase 3] GPU -> CPU: Transferring results (async)..." << endl;
-    cudaMemcpyAsync(&distance[0], d_distance, size, cudaMemcpyDeviceToHost, transferStream1);
-    cudaStreamSynchronize(transferStream1);
+        cout << "\n[Phase 4] GPU -> CPU: Transferring results..." << endl;
+    cudaMemcpy(&distance[0], d_distance, size, cudaMemcpyDeviceToHost);
 
     // Fill visited array
     for (int i = 0; i < G.numVertices; ++i)
@@ -388,6 +429,13 @@ void bfsGPU_Stream(int start, Graph &G, vector<int> &distance, vector<bool> &vis
     }
 
     // Cleanup
+    if (graphExec)
+        cudaGraphExecDestroy(graphExec);
+    if (graphCaptured)
+        cudaGraphDestroy(graph);
+
+    cudaStreamDestroy(stream);
+
     cudaFree(d_edgesOffset);
     cudaFree(d_edgesSize);
     cudaFree(d_firstQueue);
@@ -398,15 +446,11 @@ void bfsGPU_Stream(int start, Graph &G, vector<int> &distance, vector<bool> &vis
     cudaFree(d_compactOffsets);
     cudaFree(d_compactSizes);
 
-    // Free pinned memory
-    cudaFreeHost(h_currentQueueSize);
+    cudaFreeHost(h_queueSize);
     cudaFreeHost(h_nextQueueSize);
-
-    // Destroy streams
-    cudaStreamDestroy(computeStream);
-    cudaStreamDestroy(transferStream1);
-    cudaStreamDestroy(transferStream2);
-    cudaStreamDestroy(transferStream3);
+    cudaFreeHost(h_compactNeighbors);
+    cudaFreeHost(h_compactOffsets);
+    cudaFreeHost(h_compactSizes);
 
     if (verbose)
         cout << "GPU memory freed successfully" << endl;
@@ -492,7 +536,7 @@ int main(int argc, char *argv[])
     }
 
     // Create output file
-    string outputFileName = "output_" + graphName + "_stream.txt";
+    string outputFileName = "output_" + graphName + "_graph.txt";
     ofstream outputFile(outputFileName);
     if (!outputFile.is_open())
     {
@@ -590,26 +634,26 @@ int main(int argc, char *argv[])
         // Create checker with CPU results as reference
         Checker checker(distanceCPU);
 
-        // ========== GPU BFS (Stream-Optimized) ==========
+        // ========== GPU BFS ==========
         vector<int> distanceGPU(graph.numVertices);
         vector<bool> visitedGPU(graph.numVertices);
 
         cout << "\n\n============================================" << endl;
-        cout << "Running GPU BFS (Stream-Optimized) from vertex " << startVertex << endl;
+        cout << "Running GPU BFS (CUDA Graph) from vertex " << startVertex << endl;
         cout << "============================================" << endl;
 
         outputFile << "\n\n============================================" << endl;
-        outputFile << "Running GPU BFS (Stream-Optimized) from vertex " << startVertex << endl;
+        outputFile << "Running GPU BFS (CUDA Graph) from vertex " << startVertex << endl;
         outputFile << "============================================" << endl;
 
         auto gpuStart = chrono::steady_clock::now();
         bool verboseMode = !isLargeGraph;
-        bfsGPU_Stream(startVertex, graph, distanceGPU, visitedGPU, outputFile, verboseMode);
+        bfsGPU_Graph(startVertex, graph, distanceGPU, visitedGPU, outputFile, verboseMode);
         auto gpuEnd = chrono::steady_clock::now();
         auto gpuDuration = chrono::duration_cast<chrono::microseconds>(gpuEnd - gpuStart).count();
 
         // Display GPU BFS results
-        cout << "\nGPU BFS Results (Stream-Optimized):" << endl;
+        cout << "\nGPU BFS Results (CUDA Graph):" << endl;
         cout << "--------------------------------------------" << endl;
         cout << "Total execution time (including transfers): " << gpuDuration / 1000.0 << " ms" << endl;
 
@@ -637,21 +681,21 @@ int main(int argc, char *argv[])
         cout << "Verification: Comparing CPU and GPU results" << endl;
         cout << "============================================" << endl;
 
-        bool resultsMatch = checker.check(distanceGPU, "GPU BFS (Stream-Optimized)");
+        bool resultsMatch = checker.check(distanceGPU, "GPU BFS (CUDA Graph)");
 
         // ========== Performance Comparison ==========
         cout << "\n============================================" << endl;
         cout << "         PERFORMANCE COMPARISON             " << endl;
         cout << "============================================" << endl;
         cout << "CPU Execution Time: " << cpuDuration / 1000.0 << " ms" << endl;
-        cout << "GPU Execution Time (Stream): " << gpuDuration / 1000.0 << " ms" << endl;
+        cout << "GPU Execution Time (CUDA Graph): " << gpuDuration / 1000.0 << " ms" << endl;
         cout << "--------------------------------------------" << endl;
 
         outputFile << "\n============================================" << endl;
         outputFile << "         PERFORMANCE COMPARISON             " << endl;
         outputFile << "============================================" << endl;
         outputFile << "CPU Execution Time: " << cpuDuration / 1000.0 << " ms" << endl;
-        outputFile << "GPU Execution Time (Stream): " << gpuDuration / 1000.0 << " ms" << endl;
+        outputFile << "GPU Execution Time (CUDA Graph): " << gpuDuration / 1000.0 << " ms" << endl;
         outputFile << "--------------------------------------------" << endl;
 
         if (cpuDuration > gpuDuration)
