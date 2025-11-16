@@ -95,6 +95,75 @@ void Graph::init(const vector<vector<int>> &adjList)
     }
 }
 
+void Graph::loadFeatures(const string &fvecsFilePath)
+{
+    cout << "Loading feature vectors from: " << fvecsFilePath << endl;
+
+    ifstream file(fvecsFilePath, ios::binary);
+    if (!file.is_open())
+    {
+        throw runtime_error("Could not open .fvecs file: " + fvecsFilePath);
+    }
+
+    // Read first vector to get dimensions
+    int32_t dims;
+    file.read(reinterpret_cast<char *>(&dims), sizeof(int32_t));
+    if (file.eof())
+    {
+        throw runtime_error("Empty .fvecs file");
+    }
+
+    featureDimensions = dims;
+    file.seekg(0, ios::beg); // Reset to beginning
+
+    // Read all feature vectors
+    features.clear();
+    int vectorCount = 0;
+
+    while (!file.eof())
+    {
+        int32_t d;
+        file.read(reinterpret_cast<char *>(&d), sizeof(int32_t));
+        if (file.eof())
+            break;
+
+        if (d != featureDimensions)
+        {
+            throw runtime_error("Inconsistent dimensions in .fvecs file");
+        }
+
+        // Read feature vector
+        vector<float> vec(d);
+        file.read(reinterpret_cast<char *>(vec.data()), d * sizeof(float));
+
+        if (file.gcount() != d * sizeof(float))
+        {
+            break; // End of file or incomplete vector
+        }
+
+        // Append to flattened features array
+        features.insert(features.end(), vec.begin(), vec.end());
+        vectorCount++;
+
+        // Stop if we have enough vectors for all vertices
+        if (vectorCount >= numVertices)
+        {
+            break;
+        }
+    }
+
+    file.close();
+
+    if (vectorCount < numVertices)
+    {
+        throw runtime_error("Not enough feature vectors in .fvecs file. Found " +
+                            to_string(vectorCount) + ", need " + to_string(numVertices));
+    }
+
+    cout << "Loaded " << vectorCount << " feature vectors, each with "
+         << featureDimensions << " dimensions" << endl;
+}
+
 void Graph::print() const
 {
     printf("\n");

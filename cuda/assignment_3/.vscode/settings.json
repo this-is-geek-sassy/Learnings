@@ -3,6 +3,7 @@
         "Jenkinsfile": "groovy",
         "*html": "html",
         "*.cu": "cpp",
-        "chrono": "cpp"
+        "chrono": "cpp",
+        "ostream": "cpp"
     }
 }

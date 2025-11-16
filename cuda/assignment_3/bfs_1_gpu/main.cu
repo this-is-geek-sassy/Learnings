@@ -114,10 +114,23 @@ __global__ void bfsKernel(int *adjacencyList, int *edgesOffset, int *edgesSize, 
 // Helper function to calculate Euclidean distance from start node
 double calculateEuclideanDistance(int node, int start, const Graph &G)
 {
-    // For a graph representation, we use the graph distance (BFS level) as a proxy
-    // In a real geometric graph, you would use actual coordinates
-    // Here we return the node index difference as a simple metric
-    return abs(node - start);
+    // If features are not loaded, use node ID difference as fallback
+    if (G.features.empty() || G.featureDimensions == 0)
+    {
+        return abs(node - start);
+    }
+
+    // Calculate actual Euclidean distance using feature vectors
+    double sum = 0.0;
+    int dims = G.featureDimensions;
+
+    for (int d = 0; d < dims; ++d)
+    {
+        float diff = G.features[node * dims + d] - G.features[start * dims + d];
+        sum += diff * diff;
+    }
+
+    return sqrt(sum);
 }
 
 // GPU-accelerated BFS with CPU-GPU coordination
@@ -130,14 +143,14 @@ void bfsGPU(int start, Graph &G, vector<int> &distance, vector<bool> &visited,
     int *d_adjacencyList;
     int *d_edgesOffset;
     int *d_edgesSize;
-    int *d_firstQueue;
-    int *d_secondQueue;
+    int *d_firstQueue;  // have to understand
+    int *d_secondQueue; // have to understand
     int *d_nextQueueSize;
     int *d_distance;
 
     // Host variables
-    int currentQueueSize = 1;
-    const int NEXT_QUEUE_SIZE = 0;
+    int currentQueueSize = 1;      // have to understand
+    const int NEXT_QUEUE_SIZE = 0; // have to understand
     int level = 0;
 
     // For tracking nodes at each level
@@ -217,7 +230,7 @@ void bfsGPU(int start, Graph &G, vector<int> &distance, vector<bool> &visited,
 
         cudaDeviceSynchronize();
 
-        // Find closest and farthest nodes at this level
+        // Find closest and farthest nodes at this level based on Euclidean distance
         int closestNode = currentLevelNodes[0];
         int farthestNode = currentLevelNodes[0];
         double closestDist = calculateEuclideanDistance(closestNode, start, G);
@@ -240,18 +253,9 @@ void bfsGPU(int start, Graph &G, vector<int> &distance, vector<bool> &visited,
 
         // Print level information
         char buffer[512];
-        if (level == 0)
-        {
-            snprintf(buffer, sizeof(buffer),
-                     "| %-5d | %-21d | Farthest node = %d, Dist=%.1f\n| %5s | %21s | Closest node = %d, Dist=%.1f",
-                     level, currentQueueSize, farthestNode, farthestDist, "", "", closestNode, closestDist);
-        }
-        else
-        {
-            snprintf(buffer, sizeof(buffer),
-                     "| %-5d | %-21d | Farthest node = %d, Dist=%.1f\n| %5s | %21s | Closest node = %d, Dist=%.1f",
-                     level, currentQueueSize, farthestNode, farthestDist, "", "", closestNode, closestDist);
-        }
+        snprintf(buffer, sizeof(buffer),
+                 "| %-5d | %-21d | Farthest node = %d, Dist=%.1f\n| %5s | %21s | Closest node = %d, Dist=%.1f",
+                 level, currentQueueSize, farthestNode, farthestDist, "", "", closestNode, closestDist);
 
         string output(buffer);
         cout << output << endl;
@@ -342,19 +346,27 @@ int main(int argc, char *argv[])
     // Check if CSV file path is provided as command line argument
     if (argc < 2)
     {
-        cerr << "Usage: " << argv[0] << " <path_to_csv_file> [start_vertex]" << endl;
+        cerr << "Usage: " << argv[0] << " <path_to_csv_file> [start_vertex] [path_to_fvecs_file]" << endl;
         cerr << "Example: " << argv[0] << " ../graph_100_8.csv" << endl;
         cerr << "Example: " << argv[0] << " ../graph_10000_16.csv 3263" << endl;
+        cerr << "Example: " << argv[0] << " ../graph_10000_16.csv 3263 ../sift/sift_base.fvecs" << endl;
         return 1;
     }
 
     string csvFilePath = argv[1];
-    int startVertex = 0; // Default start vertex
+    int startVertex = 0;       // Default start vertex
+    string fvecsFilePath = ""; // Optional feature vectors file
 
     // Parse optional start vertex argument
     if (argc >= 3)
     {
         startVertex = atoi(argv[2]);
+    }
+
+    // Parse optional .fvecs file path
+    if (argc >= 4)
+    {
+        fvecsFilePath = argv[3];
     }
 
     // Extract graph name from file path for output file
@@ -383,6 +395,18 @@ int main(int argc, char *argv[])
     {
         // Create graph from CSV file
         Graph graph(csvFilePath);
+
+        // Load feature vectors if provided
+        if (!fvecsFilePath.empty())
+        {
+            graph.loadFeatures(fvecsFilePath);
+            cout << "Using actual Euclidean distances from feature vectors" << endl;
+        }
+        else
+        {
+            cout << "No feature vectors provided. Using node ID difference as distance metric." << endl;
+            graph.featureDimensions = 0; // Mark as not loaded
+        }
 
         // Validate start vertex
         if (startVertex < 0 || startVertex >= graph.numVertices)

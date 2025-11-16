@@ -19,6 +19,13 @@ public:
     int numVertices;
     int numEdges;
 
+    // Feature vectors for Euclidean distance calculation
+    std::vector<float> features; // Flattened feature vectors (numVertices * dimensions)
+    int featureDimensions;       // Number of dimensions per feature vector
+
+    // Load feature vectors from .fvecs file
+    void loadFeatures(const std::string &fvecsFilePath);
+
     // Print graph information
     void print() const;
 
