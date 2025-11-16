@@ -168,9 +168,12 @@ void bfsGPU_Stream(int start, Graph &G, vector<int> &distance, vector<bool> &vis
     vector<vector<int>> nodesAtLevel;
 
     // Create CUDA streams for overlapping operations
-    cudaStream_t computeStream, transferStream;
+    cudaStream_t computeStream;
+    cudaStream_t transferStream1, transferStream2, transferStream3; // Separate streams for concurrent transfers
     cudaStreamCreate(&computeStream);
-    cudaStreamCreate(&transferStream);
+    cudaStreamCreate(&transferStream1);
+    cudaStreamCreate(&transferStream2);
+    cudaStreamCreate(&transferStream3);
 
     // Allocate device memory (NO adjacency list!)
     const int size = G.numVertices * sizeof(int);
@@ -196,18 +199,21 @@ void bfsGPU_Stream(int start, Graph &G, vector<int> &distance, vector<bool> &vis
         cout << "\n[Phase 1] Transferring graph metadata (NO adjacency list transfer)..." << endl;
     auto transferStart = chrono::steady_clock::now();
 
-    cudaMemcpyAsync(d_edgesOffset, &G.edgesOffset[0], size, cudaMemcpyHostToDevice, transferStream);
-    cudaMemcpyAsync(d_edgesSize, &G.edgesSize[0], size, cudaMemcpyHostToDevice, transferStream);
-    cudaMemcpyAsync(d_nextQueueSize, &NEXT_QUEUE_SIZE, sizeof(int), cudaMemcpyHostToDevice, transferStream);
-    cudaMemcpyAsync(d_firstQueue, &start, sizeof(int), cudaMemcpyHostToDevice, transferStream);
+    // Use separate streams for concurrent transfers
+    cudaMemcpyAsync(d_edgesOffset, &G.edgesOffset[0], size, cudaMemcpyHostToDevice, transferStream1);
+    cudaMemcpyAsync(d_edgesSize, &G.edgesSize[0], size, cudaMemcpyHostToDevice, transferStream2);
+    cudaMemcpyAsync(d_nextQueueSize, &NEXT_QUEUE_SIZE, sizeof(int), cudaMemcpyHostToDevice, transferStream3);
+    cudaMemcpyAsync(d_firstQueue, &start, sizeof(int), cudaMemcpyHostToDevice, transferStream3);
 
     // Initialize distance array
     distance = vector<int>(G.numVertices, INT_MAX);
     distance[start] = 0;
-    cudaMemcpyAsync(d_distance, distance.data(), size, cudaMemcpyHostToDevice, transferStream);
+    cudaMemcpyAsync(d_distance, distance.data(), size, cudaMemcpyHostToDevice, transferStream1);
 
     // Wait for initial transfers to complete
-    cudaStreamSynchronize(transferStream);
+    cudaStreamSynchronize(transferStream1);
+    cudaStreamSynchronize(transferStream2);
+    cudaStreamSynchronize(transferStream3);
 
     auto transferEnd = chrono::steady_clock::now();
     auto transferDuration = chrono::duration_cast<chrono::microseconds>(transferEnd - transferStart).count();
@@ -252,10 +258,10 @@ void bfsGPU_Stream(int start, Graph &G, vector<int> &distance, vector<bool> &vis
         // Copy current queue to host
         currentLevelNodes.resize(currentQueueSize);
         cudaMemcpyAsync(currentLevelNodes.data(), d_currentQueue,
-                        currentQueueSize * sizeof(int), cudaMemcpyDeviceToHost, transferStream);
+                        currentQueueSize * sizeof(int), cudaMemcpyDeviceToHost, transferStream1);
 
         // Wait to get the current frontier nodes
-        cudaStreamSynchronize(transferStream);
+        cudaStreamSynchronize(transferStream1);
 
         // Pack neighbors for ONLY the nodes in current frontier
         h_compactNeighbors.clear();
@@ -282,16 +288,19 @@ void bfsGPU_Stream(int start, Graph &G, vector<int> &distance, vector<bool> &vis
         }
 
         // Transfer ONLY the compact neighbor data needed for this iteration
+        // Use separate streams for concurrent uploads
         int compactSize = h_compactNeighbors.size() * sizeof(int);
         cudaMemcpyAsync(d_compactNeighbors, h_compactNeighbors.data(), compactSize,
-                        cudaMemcpyHostToDevice, transferStream);
+                        cudaMemcpyHostToDevice, transferStream1);
         cudaMemcpyAsync(d_compactOffsets, h_compactOffsets.data(),
-                        currentQueueSize * sizeof(int), cudaMemcpyHostToDevice, transferStream);
+                        currentQueueSize * sizeof(int), cudaMemcpyHostToDevice, transferStream2);
         cudaMemcpyAsync(d_compactSizes, h_compactSizes.data(),
-                        currentQueueSize * sizeof(int), cudaMemcpyHostToDevice, transferStream);
+                        currentQueueSize * sizeof(int), cudaMemcpyHostToDevice, transferStream3);
 
-        // Wait for compact data transfer to complete
-        cudaStreamSynchronize(transferStream);
+        // Wait for all compact data transfers to complete
+        cudaStreamSynchronize(transferStream1);
+        cudaStreamSynchronize(transferStream2);
+        cudaStreamSynchronize(transferStream3);
 
         // GPU processes current frontier with compact neighbor data
         bfsKernel_Compact<<<n_blocks, N_THREADS_PER_BLOCK, 0, computeStream>>>(
@@ -354,7 +363,9 @@ void bfsGPU_Stream(int start, Graph &G, vector<int> &distance, vector<bool> &vis
 
     // Ensure all operations are complete
     cudaStreamSynchronize(computeStream);
-    cudaStreamSynchronize(transferStream);
+    cudaStreamSynchronize(transferStream1);
+    cudaStreamSynchronize(transferStream2);
+    cudaStreamSynchronize(transferStream3);
 
     auto bfsEnd = chrono::steady_clock::now();
     auto bfsDuration = chrono::duration_cast<chrono::milliseconds>(bfsEnd - bfsStart).count();
@@ -366,8 +377,8 @@ void bfsGPU_Stream(int start, Graph &G, vector<int> &distance, vector<bool> &vis
     // Transfer results back to host (async)
     if (verbose)
         cout << "\n[Phase 3] GPU -> CPU: Transferring results (async)..." << endl;
-    cudaMemcpyAsync(&distance[0], d_distance, size, cudaMemcpyDeviceToHost, transferStream);
-    cudaStreamSynchronize(transferStream);
+    cudaMemcpyAsync(&distance[0], d_distance, size, cudaMemcpyDeviceToHost, transferStream1);
+    cudaStreamSynchronize(transferStream1);
 
     // Fill visited array
     for (int i = 0; i < G.numVertices; ++i)
@@ -392,7 +403,9 @@ void bfsGPU_Stream(int start, Graph &G, vector<int> &distance, vector<bool> &vis
 
     // Destroy streams
     cudaStreamDestroy(computeStream);
-    cudaStreamDestroy(transferStream);
+    cudaStreamDestroy(transferStream1);
+    cudaStreamDestroy(transferStream2);
+    cudaStreamDestroy(transferStream3);
 
     if (verbose)
         cout << "GPU memory freed successfully" << endl;
