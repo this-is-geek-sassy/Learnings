@@ -8,7 +8,7 @@ NVCCFLAGS = -std=c++11 -O3 -arch=sm_86
 TARGET = graph_bfs
 
 # Source files
-CU_SOURCES = main.cu
+CU_SOURCES = bfs_baseline.cu
 CPP_SOURCES = graph.cpp
 HEADERS = graph.h
 
