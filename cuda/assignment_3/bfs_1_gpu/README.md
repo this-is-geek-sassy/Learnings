@@ -94,45 +94,46 @@ make clean           # Remove all binaries and object files
 
 ## Running Individual Programs
 
-All programs require two command-line arguments:
+All programs require three command-line arguments:
 
 1. Path to KNN graph CSV file
-2. Path to SIFT feature vectors file (`.fvecs` format)
+2. Starting vertex ID for BFS traversal
+3. Path to SIFT feature vectors file (`.fvecs` format)
 
 ### Baseline Implementation
 
 ```bash
-./bfs_baseline <graph_csv> <features_fvecs>
+./bfs_baseline <graph_csv> <start_vertex> <features_fvecs>
 ```
 
 Example:
 
 ```bash
-./bfs_baseline ../graph_100_8.csv ../sift/sift_base.fvecs
+./bfs_baseline ../graph_100_8.csv 0 ../sift/sift_base.fvecs
 ```
 
 ### Stream-Optimized Version
 
 ```bash
-./bfs_stream <graph_csv> <features_fvecs>
+./bfs_stream <graph_csv> <start_vertex> <features_fvecs>
 ```
 
 Example:
 
 ```bash
-./bfs_stream ../graph_100_8.csv ../sift/sift_base.fvecs
+./bfs_stream ../graph_100_8.csv 0 ../sift/sift_base.fvecs
 ```
 
 ### CUDA Graph Version
 
 ```bash
-./bfs_graph <graph_csv> <features_fvecs>
+./bfs_graph <graph_csv> <start_vertex> <features_fvecs>
 ```
 
 Example:
 
 ```bash
-./bfs_graph ../graph_100_8.csv ../sift/sift_base.fvecs
+./bfs_graph ../graph_100_8.csv 0 ../sift/sift_base.fvecs
 ```
 
 ## Program Output
@@ -141,7 +142,7 @@ Each program outputs:
 
 1. **Graph Statistics**: Number of vertices and edges
 2. **BFS Traversal Results**:
-   - Level-by-level node traversal from source vertex 0
+   - Level-by-level node traversal from specified source vertex
    - Euclidean distances from source (using SIFT features)
    - Format: `Node <id> at level <level>, distance: <euclidean_dist>`
 3. **Verification**: CPU vs GPU correctness check
@@ -193,10 +194,10 @@ Graph: 13.542 ms (speedup: 1.12x)
 To benchmark a specific graph:
 
 ```bash
-# Run each version and compare times
-./bfs_baseline graph.csv sift_base.fvecs | grep "GPU Time"
-./bfs_stream graph.csv sift_base.fvecs | grep "GPU Time"
-./bfs_graph graph.csv sift_base.fvecs | grep "GPU Time"
+# Run each version and compare times (using vertex 0 as start)
+./bfs_baseline graph.csv 0 sift_base.fvecs | grep "GPU Time"
+./bfs_stream graph.csv 0 sift_base.fvecs | grep "GPU Time"
+./bfs_graph graph.csv 0 sift_base.fvecs | grep "GPU Time"
 ```
 
 ## Performance Visualization
