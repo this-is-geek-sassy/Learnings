@@ -6,7 +6,12 @@
         <option name="migrated" value="true" />
         <option name="pristineConfig" value="false" />
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
         <option name="userId" value="62bd355c:1920ad2f034:-7ffe" />
+=======
+        <option name="userId" value="5f0fc79:190f2e1f6ed:-8000" />
+        <option name="version" value="8.13.2" />
+>>>>>>> Stashed changes
 =======
         <option name="userId" value="5f0fc79:190f2e1f6ed:-8000" />
         <option name="version" value="8.13.2" />
