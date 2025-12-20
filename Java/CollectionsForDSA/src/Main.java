@@ -1,5 +1,5 @@
 import java.util.ArrayList;
-import java.util.Collection;
+import java.util.List;
 import java.util.Iterator;
 import java.util.Objects;
 import java.util.function.Predicate;
@@ -65,7 +65,7 @@ public class Main {
         Predicate<String> isNullOrEmpty = isNull.or(isEmpty);
         Predicate<String> always = o -> true;
 
-        Collection<String> strings = new ArrayList<>();
+        List<String> strings = new ArrayList<>();
         strings.add(null);
         strings.add("");
         strings.add("one");
@@ -95,5 +95,7 @@ public class Main {
         // for (int i : new Range(0, 5)) {
         //     System.out.println(i);
         // }
+
+        System.out.println(strings.get(0));
     }
 }
